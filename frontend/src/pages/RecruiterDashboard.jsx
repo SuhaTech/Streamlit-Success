@@ -1,0 +1,345 @@
+import React, { useState, useEffect } from 'react';
+import axios from '../api/axios';
+import Navbar from '../components/Navbar';
+import { useAuth } from '../context/AuthContext';
+import {
+  Briefcase, Users, Plus, X, Search, Filter, Eye, ChevronDown,
+  MapPin, Clock, DollarSign, CheckCircle2, XCircle, Mail, FileText,
+  Star, Building2, ArrowRight, LayoutDashboard, Send, Edit, Trash2,
+} from 'lucide-react';
+
+const STATUS_COLORS = {
+  applied: 'bg-blue-100 text-blue-700',
+  under_review: 'bg-yellow-100 text-yellow-700',
+  shortlisted: 'bg-purple-100 text-purple-700',
+  interview: 'bg-indigo-100 text-indigo-700',
+  offered: 'bg-green-100 text-green-700',
+  rejected: 'bg-red-100 text-red-700',
+  offer_declined: 'bg-gray-100 text-gray-500',
+};
+
+const RecruiterDashboard = () => {
+  const { user, logout } = useAuth();
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [jobs, setJobs] = useState([]);
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [applicants, setApplicants] = useState([]);
+  const [showPostForm, setShowPostForm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const [jobForm, setJobForm] = useState({
+    title: '', company: user?.companyName || '', type: 'internship',
+    domain: '', description: '', requiredSkills: '',
+    eligibility: '', stipend: '', location: '', duration: '', deadline: '',
+  });
+
+  // Fetch my jobs
+  useEffect(() => {
+    fetchMyJobs();
+  }, []);
+
+  const fetchMyJobs = async () => {
+    try {
+      setLoading(true);
+      const res = await axios.get('/api/jobs/mine');
+      setJobs(res.data.jobs);
+    } catch (err) {
+      console.error('Failed to fetch jobs', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePostJob = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        ...jobForm,
+        requiredSkills: jobForm.requiredSkills.split(',').map(s => s.trim()).filter(Boolean),
+      };
+      await axios.post('/api/jobs', payload);
+      setShowPostForm(false);
+      setJobForm({ title: '', company: user?.companyName || '', type: 'internship', domain: '', description: '', requiredSkills: '', eligibility: '', stipend: '', location: '', duration: '', deadline: '' });
+      fetchMyJobs();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to post job');
+    }
+  };
+
+  const handleDeleteJob = async (jobId) => {
+    if (!window.confirm('Delete this job listing?')) return;
+    try {
+      await axios.delete(`/api/jobs/${jobId}`);
+      fetchMyJobs();
+      if (selectedJob?._id === jobId) setSelectedJob(null);
+    } catch (err) {
+      alert('Failed to delete job');
+    }
+  };
+
+  const fetchApplicants = async (jobId) => {
+    try {
+      const res = await axios.get(`/api/applications/job/${jobId}`);
+      setApplicants(res.data.applications);
+    } catch (err) {
+      console.error('Failed to fetch applicants', err);
+    }
+  };
+
+  const handleStatusUpdate = async (appId, newStatus) => {
+    try {
+      await axios.put(`/api/applications/${appId}/status`, { status: newStatus });
+      fetchApplicants(selectedJob._id);
+    } catch (err) {
+      alert('Failed to update status');
+    }
+  };
+
+  const viewApplicants = (job) => {
+    setSelectedJob(job);
+    fetchApplicants(job._id);
+    setActiveTab('applicants');
+  };
+
+  const tabs = [
+    { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { key: 'postjob', label: 'Post Job', icon: Plus },
+    { key: 'listings', label: 'My Listings', icon: Briefcase },
+    { key: 'applicants', label: 'Applicants', icon: Users },
+  ];
+
+  const openJobs = jobs.filter(j => j.status === 'open');
+  const closedJobs = jobs.filter(j => j.status === 'closed');
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
+      <div className="flex">
+        {/* Sidebar */}
+        <aside className="w-64 bg-white border-r min-h-[calc(100vh-64px)] p-4">
+          <div className="mb-6">
+            <h3 className="font-semibold text-gray-800 text-lg">{user?.name}</h3>
+            <p className="text-sm text-gray-500">{user?.companyName || 'Recruiter'}</p>
+          </div>
+          <nav className="space-y-1">
+            {tabs.map(t => (
+              <button key={t.key} onClick={() => setActiveTab(t.key)}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${activeTab === t.key ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-100'}`}>
+                <t.icon size={18} />
+                {t.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        {/* Main */}
+        <main className="flex-1 p-6">
+          {/* DASHBOARD TAB */}
+          {activeTab === 'dashboard' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-6">Recruiter Dashboard</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <StatCard icon={Briefcase} label="Total Listings" value={jobs.length} color="bg-blue-500" />
+                <StatCard icon={CheckCircle2} label="Open Jobs" value={openJobs.length} color="bg-green-500" />
+                <StatCard icon={Users} label="Total Applicants" value={jobs.reduce((sum, j) => sum + (j.applicantCount || 0), 0)} color="bg-purple-500" />
+              </div>
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <h3 className="font-semibold text-gray-800 mb-4">Recent Listings</h3>
+                {jobs.slice(0, 5).map(job => (
+                  <div key={job._id} className="flex items-center justify-between py-3 border-b last:border-0">
+                    <div>
+                      <p className="font-medium text-gray-800">{job.title}</p>
+                      <p className="text-sm text-gray-500">{job.type} • {job.location || 'Remote'}</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${job.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{job.status}</span>
+                      <button onClick={() => viewApplicants(job)} className="text-indigo-600 hover:text-indigo-800 text-sm font-medium">
+                        View <ArrowRight size={14} className="inline" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {jobs.length === 0 && <p className="text-gray-400 text-center py-4">No job listings yet</p>}
+              </div>
+            </div>
+          )}
+
+          {/* POST JOB TAB */}
+          {activeTab === 'postjob' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-6">Post New Job</h2>
+              <form onSubmit={handlePostJob} className="bg-white rounded-xl shadow-sm p-6 max-w-3xl">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input label="Job Title *" value={jobForm.title} onChange={v => setJobForm({...jobForm, title: v})} required />
+                  <Input label="Company *" value={jobForm.company} onChange={v => setJobForm({...jobForm, company: v})} required />
+                  <Select label="Type *" value={jobForm.type} onChange={v => setJobForm({...jobForm, type: v})} options={[{v:'internship',l:'Internship'},{v:'fulltime',l:'Full-Time'},{v:'parttime',l:'Part-Time'}]} />
+                  <Input label="Domain" value={jobForm.domain} onChange={v => setJobForm({...jobForm, domain: v})} placeholder="e.g. Web Development" />
+                  <Input label="Location" value={jobForm.location} onChange={v => setJobForm({...jobForm, location: v})} placeholder="e.g. Mumbai / Remote" />
+                  <Input label="Duration" value={jobForm.duration} onChange={v => setJobForm({...jobForm, duration: v})} placeholder="e.g. 6 months" />
+                  <Input label="Stipend / Salary" value={jobForm.stipend} onChange={v => setJobForm({...jobForm, stipend: v})} placeholder="e.g. ₹15,000/month" />
+                  <Input label="Deadline" type="date" value={jobForm.deadline} onChange={v => setJobForm({...jobForm, deadline: v})} />
+                </div>
+                <div className="mt-4">
+                  <Input label="Required Skills (comma-separated)" value={jobForm.requiredSkills} onChange={v => setJobForm({...jobForm, requiredSkills: v})} placeholder="react, node.js, mongodb" />
+                </div>
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Eligibility</label>
+                  <textarea className="w-full border rounded-lg p-2 text-sm" rows={2} value={jobForm.eligibility} onChange={e => setJobForm({...jobForm, eligibility: e.target.value})} placeholder="e.g. Final year B.Tech students with CGPA > 7.0" />
+                </div>
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
+                  <textarea className="w-full border rounded-lg p-2 text-sm" rows={5} value={jobForm.description} onChange={e => setJobForm({...jobForm, description: e.target.value})} required placeholder="Job description, responsibilities, requirements..." />
+                </div>
+                <button type="submit" className="mt-6 bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 font-medium flex items-center gap-2">
+                  <Send size={16} /> Post Job
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* LISTINGS TAB */}
+          {activeTab === 'listings' && (
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-gray-800">My Job Listings</h2>
+                <button onClick={() => setActiveTab('postjob')} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-medium flex items-center gap-2 text-sm">
+                  <Plus size={16} /> New Job
+                </button>
+              </div>
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                <input type="text" placeholder="Search listings..." className="pl-10 pr-4 py-2 border rounded-lg w-full max-w-md text-sm" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+              </div>
+              <div className="space-y-4">
+                {jobs.filter(j => j.title.toLowerCase().includes(searchTerm.toLowerCase())).map(job => (
+                  <div key={job._id} className="bg-white rounded-xl shadow-sm p-5 flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="font-semibold text-gray-800">{job.title}</h3>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${job.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{job.status}</span>
+                        <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">{job.type}</span>
+                      </div>
+                      <p className="text-sm text-gray-500 flex items-center gap-4">
+                        <span><Building2 size={14} className="inline mr-1" />{job.company}</span>
+                        {job.location && <span><MapPin size={14} className="inline mr-1" />{job.location}</span>}
+                        {job.deadline && <span><Clock size={14} className="inline mr-1" />Due: {new Date(job.deadline).toLocaleDateString()}</span>}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => viewApplicants(job)} className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100 flex items-center gap-1">
+                        <Users size={14} /> Applicants
+                      </button>
+                      <button onClick={() => handleDeleteJob(job._id)} className="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-sm font-medium hover:bg-red-100">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {jobs.length === 0 && (
+                  <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                    <Briefcase size={48} className="mx-auto mb-4 text-gray-300" />
+                    <p className="text-gray-500 mb-4">No job listings yet</p>
+                    <button onClick={() => setActiveTab('postjob')} className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 text-sm">Post Your First Job</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* APPLICANTS TAB */}
+          {activeTab === 'applicants' && (
+            <div>
+              <div className="flex items-center gap-3 mb-6">
+                <button onClick={() => setActiveTab('listings')} className="text-gray-400 hover:text-gray-600">← Back</button>
+                <h2 className="text-2xl font-bold text-gray-800">
+                  {selectedJob ? `Applicants for: ${selectedJob.title}` : 'Select a job to view applicants'}
+                </h2>
+              </div>
+              {!selectedJob ? (
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                  <p className="text-gray-500 mb-4">Choose a job from listings to view applicants</p>
+                  {jobs.map(job => (
+                    <button key={job._id} onClick={() => viewApplicants(job)} className="block w-full text-left px-4 py-3 border rounded-lg mb-2 hover:bg-indigo-50 transition">
+                      <span className="font-medium">{job.title}</span> — <span className="text-sm text-gray-500">{job.company}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {applicants.length === 0 && (
+                    <div className="bg-white rounded-xl shadow-sm p-8 text-center">
+                      <Users size={40} className="mx-auto mb-3 text-gray-300" />
+                      <p className="text-gray-500">No applicants yet</p>
+                    </div>
+                  )}
+                  {applicants.map(app => (
+                    <div key={app._id} className="bg-white rounded-xl shadow-sm p-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h4 className="font-semibold text-gray-800">{app.studentId?.name || 'Student'}</h4>
+                          <p className="text-sm text-gray-500">{app.studentId?.email}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {app.matchScore > 0 && (
+                            <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium flex items-center gap-1">
+                              <Star size={12} /> {app.matchScore}% match
+                            </span>
+                          )}
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[app.status] || 'bg-gray-100 text-gray-500'}`}>
+                            {app.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                      </div>
+                      {app.coverNote && (
+                        <p className="text-sm text-gray-600 mb-3 bg-gray-50 p-3 rounded-lg">{app.coverNote}</p>
+                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {['under_review', 'shortlisted', 'interview', 'offered', 'rejected'].map(s => (
+                          <button key={s} onClick={() => handleStatusUpdate(app._id, s)}
+                            disabled={app.status === s}
+                            className={`px-3 py-1 rounded text-xs font-medium transition ${app.status === s ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'}`}>
+                            {s.replace('_', ' ')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+};
+
+// Helper components
+const StatCard = ({ icon: Icon, label, value, color }) => (
+  <div className="bg-white rounded-xl shadow-sm p-5 flex items-center gap-4">
+    <div className={`${color} p-3 rounded-xl text-white`}><Icon size={24} /></div>
+    <div>
+      <p className="text-2xl font-bold text-gray-800">{value}</p>
+      <p className="text-sm text-gray-500">{label}</p>
+    </div>
+  </div>
+);
+
+const Input = ({ label, value, onChange, type = 'text', placeholder = '', required = false }) => (
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+    <input type={type} className="w-full border rounded-lg p-2 text-sm" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} required={required} />
+  </div>
+);
+
+const Select = ({ label, value, onChange, options }) => (
+  <div>
+    <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+    <select className="w-full border rounded-lg p-2 text-sm" value={value} onChange={e => onChange(e.target.value)}>
+      {options.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+    </select>
+  </div>
+);
+
+export default RecruiterDashboard;
