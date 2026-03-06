@@ -88,7 +88,7 @@ const NotificationBell = () => {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-12 w-80 bg-white rounded-xl shadow-xl border border-gray-200 z-50 max-h-96 overflow-hidden flex flex-col">
+        <div className="absolute right-0 top-12 w-96 bg-white rounded-xl shadow-xl border border-gray-200 z-50 max-h-[32rem] overflow-hidden flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b">
             <h3 className="font-semibold text-gray-800 text-sm">Notifications</h3>
@@ -120,7 +120,7 @@ const NotificationBell = () => {
                     <span className="text-lg">{TYPE_ICONS[n.type] || '🔔'}</span>
                     <div className="flex-1 min-w-0">
                       <p className={`text-sm ${!n.read ? 'font-semibold text-gray-800' : 'text-gray-700'}`}>{n.title}</p>
-                      <p className="text-xs text-gray-500 mt-0.5 truncate">{n.message}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 leading-relaxed whitespace-normal break-words">{n.message}</p>
                       <p className="text-xs text-gray-400 mt-1">{timeAgo(n.createdAt)}</p>
                     </div>
                     {!n.read && (

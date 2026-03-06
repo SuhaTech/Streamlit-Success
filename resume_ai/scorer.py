@@ -12,10 +12,11 @@ _sim_engine = SimilarityEngine()
 
 def _skill_overlap_score(resume_skills, job_skills):
     """Jaccard-style overlap between resume skills and required job skills."""
-    if not job_skills:
+    if not job_skills or not isinstance(job_skills, list):
         return 100.0
-    resume_set = set(s.lower() for s in resume_skills)
-    job_set = set(s.lower() for s in job_skills)
+        
+    resume_set = set(s.lower() for s in resume_skills if isinstance(s, str))
+    job_set = set(s.lower() for s in job_skills if isinstance(s, str))
 
     if not job_set:
         return 100.0
@@ -91,8 +92,8 @@ def score_student_vs_job(resume_text, job, profile_completeness=100):
         "skillOverlap": round(skill_score, 2),
         "domainMatch": round(domain_score, 2),
         "profileCompleteness": round(profile_score, 2),
-        "matchedSkills": sorted(set(s.lower() for s in resume_skills) & set(s.lower() for s in required_skills)),
-        "missingSkills": sorted(set(s.lower() for s in required_skills) - set(s.lower() for s in resume_skills)),
+        "matchedSkills": sorted(set(s.lower() for s in resume_skills if isinstance(s, type(''))) & set(s.lower() for s in required_skills if isinstance(s, type('')))) if isinstance(required_skills, list) else [],
+        "missingSkills": sorted(set(s.lower() for s in required_skills if isinstance(s, type(''))) - set(s.lower() for s in resume_skills if isinstance(s, type('')))) if isinstance(required_skills, list) else [],
     }
 
 

@@ -4,11 +4,13 @@ const protect = require("../middleware/authMiddleware");
 const authorize = require("../middleware/authorize");
 const {
   createJob, getJobs, getJob, updateJob, deleteJob, getMyJobs,
-  getPendingJobs, approveJob, rejectJob,
+  getPendingJobs, approveJob, rejectJob, getRecommendedJobs
 } = require("../controllers/jobController");
 
 // list public jobs (students see only approved)
 router.get("/",       protect, getJobs);
+// personalized recommended jobs for students
+router.get("/recommended", protect, authorize("student"), getRecommendedJobs);
 // pending approvals for placement cell
 router.get("/pending", protect, authorize("placement_cell"), getPendingJobs);
 router.get("/mine",   protect, authorize("recruiter"), getMyJobs);

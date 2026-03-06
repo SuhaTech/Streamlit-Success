@@ -100,7 +100,7 @@ const StudentDashboard = () => {
 
   const fetchJobs = async () => {
     try {
-      const res = await axios.get('/api/jobs');
+      const res = await axios.get('/api/jobs/recommended');
       const mapped = (res.data.jobs || []).map(j => ({
         id: j._id,
         company: j.company,
@@ -109,11 +109,12 @@ const StudentDashboard = () => {
         pay: j.stipend || '',
         logo: (j.company || '?')[0].toUpperCase(),
         color: 'bg-slate-700',
+        matchData: j.matchData || null,
         raw: j,
       }));
       setJobs(mapped);
     } catch (err) {
-      console.error('Failed to load jobs', err);
+      console.error('Failed to load recommended jobs', err);
     }
   };
 
@@ -122,6 +123,7 @@ const StudentDashboard = () => {
       const res = await axios.get('/api/applications/mine');
       const apps = (res.data.applications || []).map(a => ({
         id: a._id,
+        jobId:    a.jobId?._id || a.jobId || null,
         company:  a.jobId?.company || a.company || 'Unknown',
         role:     a.jobId?.title  || a.jobTitle || 'Role',
         loc:      a.jobId?.location || a.location || '',
@@ -306,10 +308,19 @@ const StudentDashboard = () => {
   // 4. JOBS & APPLICATIONS STATE
   const [myApplications, setMyApplications] = useState([]);
   const [jobs, setJobs] = useState([]);
-  const filteredJobs = jobs.filter(job => 
-    job.role.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    job.company.toLowerCase().includes(searchTerm.toLowerCase())
+  // IDs of jobs the student has already applied to
+  const appliedJobIds = new Set(
+    myApplications
+      .map(a => a.jobId || a.id)  // use jobId if available
+      .filter(Boolean)
   );
+
+  const filteredJobs = jobs
+    .filter(job => !appliedJobIds.has(job.id))   // hide already-applied jobs
+    .filter(job =>
+      job.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.company.toLowerCase().includes(searchTerm.toLowerCase())
+    );
   
   const handleApply = async (job) => {
   // Validation: Check if Profile is complete
@@ -319,37 +330,21 @@ const StudentDashboard = () => {
     return;
   }
 
-  // Double Apply check (local state)
-  const alreadyApplied = myApplications.find(a => a.company === job.company && a.role === job.role);
+  // Double Apply check (local state) - use ID instead of title/company as company might not be fully loaded
+  const alreadyApplied = myApplications.find(a => (a.jobId?._id === job.id || a.id === job.id) || (a.company === job.company && a.role === job.role));
   if (alreadyApplied) {
     alert("You have already applied for this role!");
     return;
   }
 
-  // Optimistic local update
-  const tempApp = { 
-    id: Date.now(),
-    ...job, 
-    role: job.role,
-    status: 'applied',
-    date: new Date().toLocaleDateString() 
-  };
-  setMyApplications(prev => [tempApp, ...prev]);
-
-  // Persist to backend
   try {
-    const response = await axios.post('/api/applications/quick', {
-      company:  job.company,
-      jobTitle: job.role,
-      location: job.loc,
-      stipend:  job.pay,
+    const response = await axios.post(`/api/applications/${job.id}/apply`, {
+      coverNote: "Applying via AI Recommendation"
     });
     alert('✓ Application submitted successfully!');
     // Refresh applications to get real IDs from backend
     setTimeout(() => fetchApplications(), 500);
   } catch (err) {
-    // Revert optimistic update on error
-    setMyApplications(prev => prev.filter(a => a.id !== tempApp.id));
     const errorMsg = err.response?.data?.message || 'Failed to apply. Please try again.';
     alert('❌ ' + errorMsg);
   }
@@ -431,7 +426,14 @@ const status = getProfileStatus();
               <div key={job.id} className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 hover:border-black transition-all group shadow-sm">
                 <div className="flex justify-between items-start mb-8">
                   <div className={`w-12 h-12 ${job.color} rounded-2xl flex items-center justify-center text-white text-lg font-black`}>{job.logo}</div>
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{job.loc}</span>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{job.loc}</span>
+                    {job.matchData && job.matchData.overallScore >= 0 && (
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${job.matchData.overallScore > 75 ? 'bg-green-100 text-green-700' : job.matchData.overallScore > 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                        {job.matchData.overallScore}% AI Match
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <h4 className="text-xl font-black mb-1">{job.role}</h4>
                 <p className="text-slate-400 font-bold text-xs mb-8 uppercase tracking-tighter">{job.company} • {job.pay}</p>

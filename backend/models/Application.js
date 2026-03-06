@@ -9,7 +9,7 @@ const applicationSchema = new mongoose.Schema({
   location:       String,
   stipend:        String,
   status: { type: String,
-    enum: ['applied','shortlisted','interview_scheduled','selected','rejected','offer_accepted','offer_declined'],
+    enum: ['applied','under_review','shortlisted','interview','interview_scheduled','selected','offered','rejected','offer_accepted','offer_declined'],
     default: 'applied'
   },
   matchScore:     Number,
@@ -20,7 +20,7 @@ const applicationSchema = new mongoose.Schema({
   offerDeadline:  Date,
   // Mentor approval tracking
   mentorApproval: {
-    approved:     { type: Boolean, default: false },
+    status:       { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
     approvedAt:   Date,
     mentorNote:   String,
   },

@@ -179,3 +179,80 @@ exports.getMyJobs = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+// GET /api/jobs/recommended — student personalized jobs
+exports.getRecommendedJobs = async (req, res) => {
+  try {
+    // 1. Fetch available jobs
+    const jobs = await Job.find({ status: 'open', approvalStatus: 'approved' })
+      .populate('postedBy', 'name companyName')
+      .sort({ createdAt: -1 });
+
+    if (!jobs || jobs.length === 0) {
+      return res.json({ jobs: [] });
+    }
+
+    // 2. Format jobs and resume text for the Flask API
+    const user = req.user;
+    // Construct a logical resume text block combining skills and structured info
+    let resumeText = user.resumeText || '';
+    if (!resumeText || resumeText.length < 20) {
+       // fallback if no parsed text, build a synthetic resume
+       const skills = Array.isArray(user.skills) ? user.skills.join(', ') : (user.skills || '');
+       resumeText = `${user.bio || ''} Education: ${user.branch || ''} ${user.specialization || ''}. Skills: ${skills}. Projects: ${(user.projects || []).join(', ')}.`;
+    }
+
+    // Format jobs to strip Mongoose objects
+    const jobsPayload = jobs.map(j => ({
+      _id: j._id.toString(),
+      title: j.title,
+      company: j.company,
+      domain: j.domain,
+      requiredSkills: j.requiredSkills || [],
+      jdText: j.description || '',
+    }));
+
+    // 3. Call the Python Flask API
+    const axios = require('axios');
+    const flaskUrl = process.env.FLASK_API_URL || 'http://localhost:8001';
+    
+    try {
+      const aiResponse = await axios.post(`${flaskUrl}/recommend-jobs`, {
+        resume_text: resumeText,
+        jobs: jobsPayload,
+        profile_completeness: user.profileComplete ? 100 : 50
+      });
+
+      // 4. Map the ranked jobs back to their full mongoose schemas
+      const rankings = aiResponse.data.rankings || [];
+      const rankedJobs = [];
+      
+      for (const rank of rankings) {
+        const fullJob = jobs.find(j => j._id.toString() === rank.jobId);
+        if (fullJob) {
+          // Send the match score info along with the job document
+          rankedJobs.push({
+            ...fullJob.toObject(),
+            matchData: {
+              overallScore: rank.overallScore,
+              semantic: rank.semantic,
+              skillOverlap: rank.skillOverlap,
+              domainMatch: rank.domainMatch,
+              matchedSkills: rank.matchedSkills,
+              missingSkills: rank.missingSkills
+            }
+          });
+        }
+      }
+
+      return res.json({ jobs: rankedJobs });
+    } catch (aiError) {
+      console.error('AI Recommendation failed, returning unranked jobs:', aiError.message);
+      // Fallback to unranked if AI is down
+      return res.json({ jobs });
+    }
+
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};

@@ -70,6 +70,20 @@ const MentorDashboard = () => {
     }
   };
 
+  const handleMentorRejectApplication = async (appId) => {
+    try {
+      await axios.put(`/api/applications/${appId}/mentor-reject`, {
+        mentorNote: appApprovalNote,
+      });
+      setAppApprovalNote('');
+      setAppActionId(null);
+      alert('Application rejected. Student has been notified.');
+      fetchApplications();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Action failed');
+    }
+  };
+
   const tabs = [
     { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { key: 'applications', label: 'Student Applications', icon: Briefcase },
@@ -214,8 +228,8 @@ const MentorDashboard = () => {
                         </div>
                       </div>
 
-                      {/* Approval Action */}
-                      {!app.mentorApproval?.approved && app.status === 'applied' && (
+                       {/* Approval Action */}
+                      {!app.mentorApproval?.approved && app.mentorApproval?.status !== 'rejected' && app.status === 'applied' && (
                         <div className={`mt-4 p-3 border rounded-lg ${ appActionId === app._id ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}>
                           {appActionId === app._id ? (
                             <div className="space-y-3">
@@ -234,6 +248,12 @@ const MentorDashboard = () => {
                                   <CheckCircle2 size={14} /> Approve
                                 </button>
                                 <button
+                                  onClick={() => handleMentorRejectApplication(app._id)}
+                                  className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 flex items-center gap-1"
+                                >
+                                  <XCircle size={14} /> Reject
+                                </button>
+                                <button
                                   onClick={() => { setAppActionId(null); setAppApprovalNote(''); }}
                                   className="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-400"
                                 >
@@ -246,7 +266,7 @@ const MentorDashboard = () => {
                               onClick={() => setAppActionId(app._id)}
                               className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center gap-1"
                             >
-                              <CheckCircle2 size={14} /> Accept Application
+                              <CheckCircle2 size={14} /> Review Application
                             </button>
                           )}
                         </div>

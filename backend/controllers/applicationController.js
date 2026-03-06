@@ -35,7 +35,8 @@ exports.applyToJob = async (req, res) => {
     // Notify recruiter about new application
     await Notification.send(
       job.postedBy, 'application_status',
-      'New Application', `A student applied for ${job.title}`,
+      '📩 New Application Received',
+      `${student?.name || 'A student'} has applied for the role of ${job.title} at ${job.company}${job.location ? ` (${job.location})` : ''}. Review their profile on your dashboard.`,
       `/recruiter-dashboard`
     );
 
@@ -43,7 +44,8 @@ exports.applyToJob = async (req, res) => {
     if (student?.mentorId) {
       await Notification.send(
         student.mentorId, 'application_status',
-        'Student Application', `${student?.name || 'A student'} has applied for ${job.title} at ${job.company}`,
+        '📋 Student Applied for a Job',
+        `Your student ${student?.name || 'A student'} has applied for ${job.title} at ${job.company}${job.location ? ` (${job.location})` : ''}. Please review and approve/reject from your Mentor Dashboard.`,
         `/mentor-dashboard`
       );
     }
@@ -98,17 +100,18 @@ exports.getAllApplications = async (req, res) => {
   try {
     let query = {};
     
-    // If user is a mentor, only show applications from their assigned students
+    // If user is a mentor, try to show only their assigned students' applications
+    // but fall back to all applications if no students are explicitly assigned
     if (req.user.role === 'mentor') {
       const mentorStudents = await User.find({ mentorId: req.user._id }).select('_id');
       const studentIds = mentorStudents.map(s => s._id);
-      if (studentIds.length === 0) {
-        // No students assigned to this mentor
-        return res.json({ applications: [] });
+      if (studentIds.length > 0) {
+        // Only filter by assigned students if there are any
+        query = { studentId: { $in: studentIds } };
       }
-      query = { studentId: { $in: studentIds } };
+      // If no students are assigned, show all apps (so mentor can still review)
     }
-    // For placement_cell, hod, dean: show all applications
+    // For placement_cell, hod, dean: show all applications (query = {})
 
     const apps = await Application.find(query)
       .populate('studentId', 'name email branch cgpa skills resumeUrl mentorId')
@@ -173,30 +176,56 @@ exports.updateApplicationStatus = async (req, res) => {
     const app = await Application.findById(req.params.id).populate('jobId', 'title postedBy');
     if (!app) return res.status(404).json({ message: 'Application not found' });
 
-    if (app.jobId.postedBy.toString() !== req.user._id.toString() && req.user.role !== 'placement_cell') {
-      return res.status(403).json({ message: 'Not authorized' });
+    // Authorization: if app has a jobId, check recruiter owns it; otherwise allow any recruiter
+    if (app.jobId && app.jobId.postedBy) {
+      if (app.jobId.postedBy.toString() !== req.user._id.toString() && req.user.role !== 'placement_cell') {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
     }
+    // If no jobId (old quick-apply), any recruiter can update
 
-    const validStatuses = ['applied','shortlisted','interview_scheduled','selected','rejected','offer_accepted','offer_declined'];
+    const validStatuses = [
+      'applied', 'under_review', 'shortlisted', 'interview', 'interview_scheduled',
+      'selected', 'offered', 'rejected', 'offer_accepted', 'offer_declined'
+    ];
     if (!validStatuses.includes(status)) {
-      return res.status(400).json({ message: 'Invalid status' });
+      return res.status(400).json({ message: `Invalid status: ${status}` });
     }
 
     app.status = status;
     if (recruiterNote) app.recruiterNote = recruiterNote;
     await app.save();
 
+    const jobTitle = app.jobId?.title || app.jobTitle || 'the position';
+    const company = app.jobId?.company || app.company || '';
+    const location = app.jobId?.location || app.location || '';
+    const jobInfo = company ? `${jobTitle} at ${company}${location ? ` (${location})` : ''}` : jobTitle;
+
+    const statusTitles = {
+      under_review:        '🔍 Application Under Review',
+      shortlisted:         '⭐ You\'ve Been Shortlisted!',
+      interview:           '📅 Interview Invitation',
+      interview_scheduled: '📅 Interview Scheduled',
+      selected:            '🎉 Congratulations — Selected!',
+      offered:             '🎁 Job Offer Received',
+      rejected:            '❌ Application Update',
+    };
+
     const statusMessages = {
-      shortlisted: `You have been shortlisted for ${app.jobId.title}!`,
-      interview_scheduled: `Interview scheduled for ${app.jobId.title}`,
-      selected: `Congratulations! You have been selected for ${app.jobId.title}!`,
-      rejected: `Your application for ${app.jobId.title} was not selected.`,
+      under_review:        `Your application for ${jobInfo} is currently under review by the recruiter. We'll keep you posted.`,
+      shortlisted:         `Great news! You have been shortlisted for ${jobInfo}. The recruiter will contact you soon regarding next steps.`,
+      interview:           `You've been invited for an interview for ${jobInfo}. Please check your email and be prepared. Best of luck!`,
+      interview_scheduled: `Your interview has been scheduled for ${jobInfo}. Check your email for details and timing.`,
+      selected:            `Congratulations! 🎊 You have been selected for ${jobInfo}. The recruiter will reach out with further details.`,
+      offered:             `You have received a job offer for ${jobInfo}! Please review the offer and respond at your earliest convenience.`,
+      rejected:            `We regret to inform you that your application for ${jobInfo} was not selected this time. Keep applying — good luck!`,
     };
 
     if (statusMessages[status]) {
       await Notification.send(
         app.studentId, 'application_status',
-        'Application Update', statusMessages[status],
+        statusTitles[status] || 'Application Update',
+        statusMessages[status],
         '/student-dashboard'
       );
     }
@@ -213,14 +242,14 @@ exports.mentorApproveApplication = async (req, res) => {
     const app = await Application.findById(req.params.id).populate('studentId', 'name mentorId email');
     if (!app) return res.status(404).json({ message: 'Application not found' });
 
-    // Check if application is from a student assigned to this mentor
-    if (app.studentId.mentorId.toString() !== req.user._id.toString()) {
+    // Check if application is from a student assigned to this mentor (only enforce if student has a mentorId set)
+    if (app.studentId.mentorId && app.studentId.mentorId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: 'Not authorized - student not assigned to you' });
     }
 
     // Approve the application
     app.mentorApproval = {
-      approved: true,
+      status: 'approved',
       approvedAt: new Date(),
       mentorNote: mentorNote || '',
     };
@@ -237,6 +266,44 @@ exports.mentorApproveApplication = async (req, res) => {
 
     res.json({ 
       message: 'Application approved successfully',
+      application: app 
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// PUT /api/applications/:id/mentor-reject — mentor rejects an application from their student
+exports.mentorRejectApplication = async (req, res) => {
+  try {
+    const { mentorNote } = req.body;
+    const app = await Application.findById(req.params.id).populate('studentId', 'name mentorId email');
+    if (!app) return res.status(404).json({ message: 'Application not found' });
+
+    // Check if application is from a student assigned to this mentor (only enforce if student has a mentorId set)
+    if (app.studentId.mentorId && app.studentId.mentorId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized - student not assigned to you' });
+    }
+
+    // Reject the application
+    app.mentorApproval = {
+      status: 'rejected',
+      approvedAt: new Date(),
+      mentorNote: mentorNote || '',
+    };
+    await app.save();
+
+    // Notify student that mentor rejected their application
+    const jobTitle = app.jobId?.title || app.jobTitle || 'your application';
+    await Notification.send(
+      app.studentId._id, 'application_status',
+      'Application Rejected by Mentor', 
+      `Your mentor has rejected your application for ${jobTitle}. Reason: ${mentorNote || 'No reason provided.'}`,
+      '/student-dashboard'
+    );
+
+    res.json({ 
+      message: 'Application rejected successfully',
       application: app 
     });
   } catch (err) {

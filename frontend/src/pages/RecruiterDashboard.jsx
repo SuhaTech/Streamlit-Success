@@ -43,7 +43,7 @@ const RecruiterDashboard = () => {
     try {
       setLoading(true);
       const res = await axios.get('/api/jobs/mine');
-      setJobs(res.data.jobs);
+      setJobs(res.data.jobs || res.data || []);
     } catch (err) {
       console.error('Failed to fetch jobs', err);
     } finally {
@@ -81,7 +81,7 @@ const RecruiterDashboard = () => {
   const fetchApplicants = async (jobId) => {
     try {
       const res = await axios.get(`/api/applications/job/${jobId}`);
-      setApplicants(res.data.applications);
+      setApplicants(res.data.applications || res.data.applicants || []);
     } catch (err) {
       console.error('Failed to fetch applicants', err);
     }
