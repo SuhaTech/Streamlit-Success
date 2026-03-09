@@ -17,6 +17,7 @@ const userSchema = new mongoose.Schema({
   branch:          String,
   department:      String,
   year:            Number,
+  semester:        Number,
   cgpa:            String,
   skills:          { type: mongoose.Schema.Types.Mixed, default: '' },
   resumeUrl:       String,

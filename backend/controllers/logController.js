@@ -43,7 +43,8 @@ exports.getMyLogs = async (req, res) => {
 exports.getStudentLogs = async (req, res) => {
   try {
     const filter = { guideId: req.user._id };
-    if (req.query.studentId) filter.studentId = req.query.studentId;
+    if (req.params.studentId) filter.studentId = req.params.studentId;
+    if (req.query.status) filter.status = req.query.status;
     if (req.query.status) filter.status = req.query.status;
 
     const logs = await WeeklyLog.find(filter)

@@ -33,11 +33,19 @@ const InternalGuideDashboard = () => {
   const fetchStudents = async () => {
     try {
       setLoading(true);
-      // Get all students who have this guide as internal_guide
-      const res = await axios.get('/api/admin/users?role=student');
-      // Filter students assigned to this guide (via guideId)
-      const myStudents = (res.data.users || []).filter(s => s.guideId === user?.id);
-      setStudents(myStudents);
+      // Get internship forms assigned to this guide to also get company details
+      const res = await axios.get('/api/internship-forms');
+      
+      const mappedStudents = res.data.map(form => ({
+        ...form.student,
+        internshipFormId: form._id,
+        companyName: form.companyName,
+        role: form.role,
+        stipend: form.stipend,
+        joiningDate: form.joiningDate,
+        internshipPeriod: form.internshipPeriod
+      }));
+      setStudents(mappedStudents);
     } catch (err) {
       console.error('Failed to fetch students', err);
     } finally {
@@ -149,12 +157,18 @@ const InternalGuideDashboard = () => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {students.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase())).map(s => (
-                  <div key={s._id} className="bg-white rounded-xl shadow-sm p-5">
+                  <div key={s._id} className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 border-l-4 border-l-blue-500">
                     <div className="flex items-center justify-between">
                       <div>
                         <h3 className="font-semibold text-gray-800">{s.name}</h3>
                         <p className="text-sm text-gray-500">{s.email}</p>
                         {s.department && <p className="text-xs text-gray-400 mt-1">{s.department}</p>}
+                        
+                        {s.companyName && (
+                          <div className="mt-2 text-sm bg-blue-50 p-2 rounded text-blue-800 border border-blue-100">
+                            Interning at <span className="font-semibold">{s.companyName}</span> as {s.role}
+                          </div>
+                        )}
                       </div>
                       <button onClick={() => viewStudentLogs(s)}
                         className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-sm font-medium hover:bg-indigo-100">

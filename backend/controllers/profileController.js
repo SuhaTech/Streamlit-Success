@@ -7,7 +7,7 @@ const ALLOWED_PROFILE_FIELDS = [
   'department', 'branch', 'specialization', 'skills',
   'resumeName', 'image', 'certificates', 'phone', 'bio',
   'education', 'projects', 'certifications', 'linkedinUrl',
-  'githubUrl', 'portfolioUrl', 'year', 'companyName', 'companyIndustry',
+  'githubUrl', 'portfolioUrl', 'year', 'semester', 'companyName', 'companyIndustry',
   'resumeUrl', 'resumeText', 'internshipReason'
 ];
 

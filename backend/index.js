@@ -16,8 +16,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 const uploadRoutes = require("./routes/uploadRoutes");
 const mentorRoutes = require("./routes/mentorRoutes");
-
-
+const internshipFormRoutes = require("./routes/internshipFormRoutes");
 
 dotenv.config();
 connectDB();
@@ -41,6 +40,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/mentors", mentorRoutes);
+app.use("/api/internship-forms", internshipFormRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

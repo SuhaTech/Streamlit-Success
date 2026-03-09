@@ -4,7 +4,7 @@ import { Search, LogOut, LayoutDashboard, CheckCircle2, FileText, Send, ShieldCh
 import NotificationBell from './NotificationBell';
 import { useAuth } from '../context/AuthContext';
 
-const Navbar = ({ activeTab, setActiveTab, searchTerm, setSearchTerm, logout: logoutProp, onLogoutClick }) => {
+const Navbar = ({ activeTab, setActiveTab, searchTerm, setSearchTerm, logout: logoutProp, onLogoutClick, profile }) => {
   const { logout: authLogout } = useAuth();
   const navigate = useNavigate();
   const [showConfirm, setShowConfirm] = useState(false);
@@ -24,6 +24,10 @@ const Navbar = ({ activeTab, setActiveTab, searchTerm, setSearchTerm, logout: lo
     { id: 'logs', label: 'Weekly Logs', icon: <FileText size={14}/> },
     { id: 'docs', label: 'Documents', icon: <Send size={14}/> }
   ];
+
+  if (profile?.semester === 8) {
+    tabs.push({ id: 'internship_form', label: 'Internship Form', icon: <FileText size={14}/> });
+  }
 
   return (<>
     <nav className="bg-white/70 backdrop-blur-xl sticky top-0 z-50 border-b border-slate-200/60 px-10 py-5 flex justify-between items-center">

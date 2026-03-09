@@ -31,6 +31,33 @@ const StudentDashboard = () => {
   achievements: '',
   bonafidePurpose: ''
 });
+
+  const [internshipFormData, setInternshipFormData] = useState({
+    companyName: '',
+    role: '',
+    stipend: '',
+    companyAddress: '',
+    joiningDate: '',
+    internshipPeriod: '',
+    extraDetails: ''
+  });
+  
+  const [submittedForms, setSubmittedForms] = useState([]);
+
+  useEffect(() => {
+    if (activeTab === 'internship_form') {
+      fetchInternshipForms();
+    }
+  }, [activeTab]);
+
+  const fetchInternshipForms = async () => {
+    try {
+      const res = await axios.get('/api/internship-forms');
+      setSubmittedForms(res.data);
+    } catch (error) {
+      console.error("Failed to fetch internship forms", error);
+    }
+  };
   // 1. PROFILE STATE
   const [profile, setProfile] = useState({
     fullName: user?.name || 'New Student',
@@ -44,6 +71,7 @@ const StudentDashboard = () => {
     graduationYear: '',
     enrollmentNo: '',
     department: '',
+    semester: '',
     branch: '',
     specialization: '', 
     skills: '',
@@ -67,6 +95,7 @@ const StudentDashboard = () => {
     graduationYear: data.graduationYear || '',
     enrollmentNo: data.enrollmentNo || '',
     department: data.department || '',
+    semester: data.semester || '',
     branch: data.branch || '',
     specialization: data.specialization || '',
     skills: Array.isArray(data.skills) ? data.skills.join(', ') : (data.skills || ''),
@@ -317,6 +346,25 @@ const StudentDashboard = () => {
   setSelectedFile(null);
   setActiveDocType(null);
 };  
+
+  const handleInternshipSubmit = async () => {
+    const { companyName, role, stipend, companyAddress, joiningDate, internshipPeriod } = internshipFormData;
+    if (!companyName || !role || !stipend || !companyAddress || !joiningDate || !internshipPeriod) {
+      alert("Please fill all required fields for the Internship Form!");
+      return;
+    }
+    try {
+      await axios.post('/api/internship-forms', internshipFormData);
+      alert("Internship Form submitted successfully!");
+      setInternshipFormData({
+        companyName: '', role: '', stipend: '', companyAddress: '',
+        joiningDate: '', internshipPeriod: '', extraDetails: ''
+      });
+      fetchInternshipForms();
+    } catch (err) {
+       alert("Failed to submit form: " + (err.response?.data?.message || err.message));
+    }
+  };
   // 3. DOCUMENT REQUESTS STATE 
   const [docRequests, setDocRequests] = useState([
     { id: 1, type: 'NOC Request', status: 'Approved', date: '20/12/2025' }
@@ -433,6 +481,7 @@ const status = getProfileStatus();
         setSearchTerm={setSearchTerm}
         logout={logout}
         onLogoutClick={() => setShowLogoutConfirm(true)}
+        profile={profile}
       />
 
       <main className="max-w-[1400px] mx-auto p-10">
@@ -674,6 +723,51 @@ const status = getProfileStatus();
           </div>
         </div>
       )}
+      {/* TAB 5: INTERNSHIP FORM */}
+      {activeTab === 'internship_form' && (
+        <div className="space-y-8 fade-in">
+          <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm">
+            <h3 className="text-2xl font-black italic uppercase tracking-tighter mb-8">8th Sem Internship Form</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <input type="text" placeholder="Company Name *" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold text-xs focus:border-black transition-colors" value={internshipFormData.companyName} onChange={(e) => setInternshipFormData({...internshipFormData, companyName: e.target.value})} />
+              <input type="text" placeholder="Role / Position *" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold text-xs focus:border-black transition-colors" value={internshipFormData.role} onChange={(e) => setInternshipFormData({...internshipFormData, role: e.target.value})} />
+              <input type="text" placeholder="Stipend (e.g., ₹20,000 or Unpaid) *" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold text-xs focus:border-black transition-colors" value={internshipFormData.stipend} onChange={(e) => setInternshipFormData({...internshipFormData, stipend: e.target.value})} />
+              <input type="text" placeholder="Company Address *" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold text-xs focus:border-black transition-colors" value={internshipFormData.companyAddress} onChange={(e) => setInternshipFormData({...internshipFormData, companyAddress: e.target.value})} />
+              <input type="date" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold text-xs text-slate-500 focus:border-black transition-colors" value={internshipFormData.joiningDate} onChange={(e) => setInternshipFormData({...internshipFormData, joiningDate: e.target.value})} />
+              <input type="text" placeholder="Internship Period (e.g., 6 Months) *" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold text-xs focus:border-black transition-colors" value={internshipFormData.internshipPeriod} onChange={(e) => setInternshipFormData({...internshipFormData, internshipPeriod: e.target.value})} />
+              <textarea placeholder="Extra Details (Optional)" className="col-span-1 md:col-span-2 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold text-xs h-32 focus:border-black transition-colors" value={internshipFormData.extraDetails} onChange={(e) => setInternshipFormData({...internshipFormData, extraDetails: e.target.value})} />
+            </div>
+            <button onClick={handleInternshipSubmit} className="w-full py-5 bg-black text-white rounded-[2rem] font-black text-sm uppercase tracking-[0.2em] hover:bg-slate-800 transition-all shadow-xl shadow-black/10 flex items-center justify-center gap-3">
+              <Send size={18} /> Submit Application
+            </button>
+          </div>
+
+          {/* Form History */}
+          {submittedForms.length > 0 && (
+            <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm">
+              <h4 className="text-xl font-black italic uppercase mb-6">Submitted Forms</h4>
+              <div className="space-y-4">
+                {submittedForms.map(form => (
+                  <div key={form._id} className="p-6 bg-slate-50 rounded-[1.5rem] flex items-center justify-between border border-slate-100">
+                    <div>
+                      <p className="font-black text-sm uppercase">{form.companyName}</p>
+                      <p className="text-[10px] text-slate-500 font-bold">{form.role} • {new Date(form.joiningDate).toLocaleDateString()}</p>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-[10px] font-black tracking-widest uppercase px-3 py-1 rounded-full ${form.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : form.status === 'rejected' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {form.status}
+                      </span>
+                      {form.internalGuide && (
+                        <p className="text-[10px] text-slate-500 mt-2">Guide: <span className="font-bold">{form.internalGuide?.name}</span></p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div> {/* Main Content Area Close */}
   </div> {/* Grid Wrapper Close */}
 
@@ -843,9 +937,10 @@ const status = getProfileStatus();
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <input type="text" placeholder="Department" className="p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs" value={profile.department} onChange={(e)=>setProfile({...profile, department: e.target.value})}/>
-                    <input type="text" placeholder="Branch" className="p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs" value={profile.branch} onChange={(e)=>setProfile({...profile, branch: e.target.value})}/>
+                    <input type="number" placeholder="Semester (e.g., 8)" className="p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs" value={profile.semester} onChange={(e)=>setProfile({...profile, semester: e.target.value ? Number(e.target.value) : ''})}/>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
+                    <input type="text" placeholder="Branch" className="p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs" value={profile.branch} onChange={(e)=>setProfile({...profile, branch: e.target.value})}/>
                     <select className="p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs text-slate-500" value={profile.specialization} onChange={(e)=>setProfile({...profile, specialization: e.target.value})}>
                       <option value="">Specialization</option>
                       <option value="CSE">CSE</option><option value="IT">IT</option><option value="AI">AI/ML</option>
@@ -1015,11 +1110,11 @@ const status = getProfileStatus();
             <button onClick={syncProfile} className="w-full py-6 bg-black text-white rounded-[2rem] font-black text-sm uppercase tracking-[0.3em] shadow-2xl shadow-black/20 hover:bg-slate-800 transition-all active:scale-[0.98]">
               Synchronize Profile Data
             </button>
+            </div>
           </div>
-      </div>
-    </div>
-  </div>
-)}
+        </div>
+        </div>
+      )}
     </div>
   );
 };

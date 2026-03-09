@@ -4,7 +4,7 @@ import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import {
   Users, FileCheck, FileText, CheckCircle2, XCircle, Clock,
-  Eye, LayoutDashboard, ArrowRight, AlertCircle, Search, Briefcase,
+  Eye, LayoutDashboard, ArrowRight, AlertCircle, Search, Briefcase, FileSignature
 } from 'lucide-react';
 
 const MentorDashboard = () => {
@@ -16,14 +16,54 @@ const MentorDashboard = () => {
   const [approvalNote, setApprovalNote] = useState('');
   const [appApprovalNote, setAppApprovalNote] = useState('');
   const [appActionId, setAppActionId] = useState(null);
- const [students, setStudents] = useState([]);
-const [interviewStudents, setInterviewStudents] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [interviewStudents, setInterviewStudents] = useState([]);
+  const [internshipForms, setInternshipForms] = useState([]);
+  const [guides, setGuides] = useState([]);
+  const [selectedGuide, setSelectedGuide] = useState({});
+
   useEffect(() => {
     fetchPendingDocs();
     fetchApplications();
     fetchStudents();
     fetchInterviewStudents();
+    fetchInternshipForms();
+    fetchGuides();
   }, []);
+
+  const fetchInternshipForms = async () => {
+    try {
+      const res = await axios.get('/api/internship-forms');
+      setInternshipForms(res.data);
+    } catch (err) {
+      console.error('Failed to fetch internship forms', err);
+    }
+  };
+
+  const fetchGuides = async () => {
+    try {
+      const res = await axios.get('/api/internship-forms/guides');
+      setGuides(res.data);
+    } catch (err) {
+      console.error('Failed to fetch guides', err);
+    }
+  };
+
+  const handleApproveInternship = async (formId) => {
+    try {
+      if (!selectedGuide[formId]) {
+        alert("Please select an internal guide before approving.");
+        return;
+      }
+      await axios.put(`/api/internship-forms/${formId}/approve`, {
+        internalGuideId: selectedGuide[formId]
+      });
+      alert("Internship Form Approved and Guide Assigned!");
+      fetchInternshipForms();
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to approve form");
+    }
+  };
   const fetchInterviewStudents = async () => {
   try {
 
@@ -111,6 +151,7 @@ setInterviewStudents(res.data.interviews || []);
   const tabs = [
     { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { key: 'applications', label: 'Student Applications', icon: Briefcase },
+    { key: 'internship_forms', label: 'Internship Forms', icon: FileSignature },
     { key: 'documents', label: 'Document Approvals', icon: FileCheck },
     { key: 'students', label: 'My Students', icon: Users },
   ];
@@ -210,6 +251,70 @@ setInterviewStudents(res.data.interviews || []);
                           <XCircle size={14} /> Reject
                         </button>
                       </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* INTERNSHIP FORMS APPROVALS */}
+          {activeTab === 'internship_forms' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-6">Internship Forms</h2>
+              {internshipForms.length === 0 ? (
+                <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                  <FileSignature size={48} className="mx-auto mb-4 text-gray-300" />
+                  <p className="text-gray-500">No internship forms to review</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {internshipForms.map(form => (
+                    <div key={form._id} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 border-l-4 border-l-indigo-500">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h3 className="font-bold text-lg text-gray-900">{form.student?.name} <span className="text-sm font-normal text-gray-500">({form.student?.branch})</span></h3>
+                          <p className="text-sm text-gray-600 mt-1"><span className="font-semibold">{form.companyName}</span> • {form.role}</p>
+                          <p className="text-xs text-gray-500 mt-1">Stipend: {form.stipend} | Duration: {form.internshipPeriod} | Joining: {new Date(form.joiningDate).toLocaleDateString()}</p>
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${form.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                          {form.status}
+                        </span>
+                      </div>
+                      
+                      {form.extraDetails && (
+                         <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded-lg mb-4">
+                           <span className="font-semibold">Extra Details:</span> {form.extraDetails}
+                         </div>
+                      )}
+
+                      {form.status === 'pending' ? (
+                        <div className="flex items-center gap-4 mt-4 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                          <div className="flex-1">
+                            <label className="block text-xs font-semibold text-indigo-900 uppercase tracking-widest mb-2">Assign Internal Guide</label>
+                            <select 
+                              className="w-full border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white"
+                              value={selectedGuide[form._id] || ''}
+                              onChange={(e) => setSelectedGuide({...selectedGuide, [form._id]: e.target.value})}
+                            >
+                              <option value="">-- Select Guide --</option>
+                              {guides.map(g => (
+                                <option key={g._id} value={g._id}>{g.name} ({g.department})</option>
+                              ))}
+                            </select>
+                          </div>
+                          <button 
+                            onClick={() => handleApproveInternship(form._id)}
+                            className="bg-indigo-600 text-white px-6 py-2.5 flexitems-center justify-center rounded-lg text-sm font-bold tracking-wide hover:bg-indigo-700 transition-colors mt-6 whitespace-nowrap"
+                          >
+                            <CheckCircle2 size={16} className="inline mr-2" /> Approve & Assign
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="mt-4 text-sm bg-green-50 p-3 rounded-lg border border-green-100">
+                          <span className="font-medium text-green-800">Assigned Guide:</span> {form.internalGuide?.name} ({form.internalGuide?.email})
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
