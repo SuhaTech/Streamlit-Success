@@ -166,7 +166,8 @@ const StudentDashboard = () => {
   date: a.interview.date,
   time: a.interview.time,
   mode: a.interview.mode,
-  meetingLink: a.interview.meetingLink
+  meetingLink: a.interview.meetingLink,
+  location: a.interview.location
 } : null,   // ⭐ ADD THIS
   date: new Date(a.createdAt).toLocaleDateString(),
 }));
@@ -386,8 +387,13 @@ const StudentDashboard = () => {
   const scheduledInterview = myApplications.find(
   app =>
     ["interview_scheduled", "interview"].includes(app.status) &&
-    app.interview
+    app.interview?.date
 );
+
+  const formatInterviewDate = (dateValue) => {
+    if (!dateValue) return 'Date not set';
+    return new Date(dateValue).toLocaleDateString();
+  };
   const [jobs, setJobs] = useState([]);
   // IDs of jobs the student has already applied to
   const appliedJobIds = new Set(
@@ -498,8 +504,14 @@ const status = getProfileStatus();
       </p>
 
       <p className="text-sm text-gray-600">
-        {scheduledInterview.interview.date} • {scheduledInterview.interview.time}
+        {formatInterviewDate(scheduledInterview.interview.date)} • {scheduledInterview.interview.time || 'Time not set'} • {scheduledInterview.interview.mode || 'Mode not set'}
       </p>
+
+      {scheduledInterview.interview.mode === 'offline' && scheduledInterview.interview.location && (
+        <p className="text-sm text-gray-600">
+          Location: {scheduledInterview.interview.location}
+        </p>
+      )}
     </div>
 
     {scheduledInterview.interview.meetingLink && (
@@ -620,7 +632,7 @@ const status = getProfileStatus();
         </p>
 
         <p className="text-sm">
-          Date: {new Date(app.interview.date).toLocaleDateString()}
+          Date: {formatInterviewDate(app.interview.date)}
         </p>
 
         <p className="text-sm">
@@ -630,6 +642,12 @@ const status = getProfileStatus();
         <p className="text-sm">
           Mode: {app.interview.mode}
         </p>
+
+        {app.interview.mode === 'offline' && app.interview.location && (
+          <p className="text-sm">
+            Location: {app.interview.location}
+          </p>
+        )}
 
         {app.interview.meetingLink && (
           <a

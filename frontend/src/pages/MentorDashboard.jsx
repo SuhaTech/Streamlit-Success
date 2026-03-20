@@ -21,6 +21,7 @@ const MentorDashboard = () => {
   const [internshipForms, setInternshipForms] = useState([]);
   const [guides, setGuides] = useState([]);
   const [selectedGuide, setSelectedGuide] = useState({});
+  const [interviewError, setInterviewError] = useState(null);
 
   useEffect(() => {
     fetchPendingDocs();
@@ -66,14 +67,29 @@ const MentorDashboard = () => {
   };
   const fetchInterviewStudents = async () => {
   try {
-
-    const res = await axios.get("/api/mentors/interview-students");
-setInterviewStudents(res.data.interviews || []);
-
+    setInterviewError(null);
+    const res = await axios.get('/api/mentors/interviews');
+    console.log('[Frontend] API Response received:', res);
+    console.log('[Frontend] res.data:', res.data);
+    console.log('[Frontend] res.data.interviews:', res.data.interviews);
+    console.log('[Frontend] Number of interviews:', res.data.interviews?.length || 0);
+    
+    if (res.data.interviews && res.data.interviews.length > 0) {
+      console.log('[Frontend] First interview:', res.data.interviews[0]);
+      console.log('[Frontend] First interview studentId:', res.data.interviews[0].studentId);
+    }
+    
     setInterviewStudents(res.data.interviews || []);
+    console.log('[Frontend] State updated with interviewStudents');
 
   } catch (err) {
-    console.error("Failed to fetch interview students", err);
+    const statusCode = err.response?.status;
+    const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message;
+    const fullError = `[${statusCode || 'Error'}] ${errorMsg}`;
+    console.error("[Frontend] Failed to fetch interview students:", fullError);
+    console.error("[Frontend] Full error response:", err.response?.data);
+    console.error("[Frontend] Full error object:", err);
+    setInterviewError(fullError);
   }
 };
 
@@ -155,6 +171,27 @@ setInterviewStudents(res.data.interviews || []);
     { key: 'documents', label: 'Document Approvals', icon: FileCheck },
     { key: 'students', label: 'My Students', icon: Users },
   ];
+
+  const getStudentInterviews = (studentId) => {
+    console.log(`[getStudentInterviews] Filtering for studentId: ${studentId}`);
+    console.log(`[getStudentInterviews] Total interviews in state: ${interviewStudents.length}`);
+    console.log(`[getStudentInterviews] All interviews:`, interviewStudents);
+    
+    const filtered = interviewStudents.filter((app) => {
+      const appStudentId = app.studentId?._id?.toString() || app.studentId?.toString();
+      const matchStudentId = studentId?.toString ? studentId.toString() : studentId;
+      console.log(`[getStudentInterviews] Comparing app.studentId: ${appStudentId} vs studentId: ${matchStudentId}`);
+      return appStudentId === matchStudentId;
+    });
+    
+    console.log(`[getStudentInterviews] Found ${filtered.length} interviews for student ${studentId}`);
+    return filtered;
+  };
+
+  const formatInterviewDate = (dateValue) => {
+    if (!dateValue) return 'Date not set';
+    return new Date(dateValue).toLocaleDateString();
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -425,78 +462,84 @@ setInterviewStudents(res.data.interviews || []);
                 <p className="text-gray-500">No students registered in your department yet.</p>
               ) : (
                 <div className="space-y-4">
+                  {interviewError && (
+                    <div className="bg-red-50 border border-red-200 p-4 rounded-lg mb-4">
+                      <p className="text-sm text-red-800">
+                        <strong>Error loading interviews:</strong> {interviewError}
+                      </p>
+                      <p className="text-xs text-red-700 mt-2">
+                        Check browser console (F12) for details. Verify your mentor account has department assigned.
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-4">
+                    <p className="text-sm text-blue-800">
+                      <strong>Total Students:</strong> {students.length} | <strong>Scheduled Interviews:</strong> {interviewStudents.length}
+                    </p>
+                  </div>
 
-{/* NORMAL STUDENTS */}
+                  <h3 className="font-semibold text-gray-700">Department Students</h3>
+                  <p className="text-xs text-gray-400 mb-2">Showing {students.length} students - Scheduled interviews: {interviewStudents.length}</p>
 
-<h3 className="font-semibold text-gray-700">Department Students</h3>
+                  {students.map((s) => {
+                    const studentInterviews = getStudentInterviews(s._id);
 
-{students.map(s => (
-  <div key={s._id} className="p-4 bg-white rounded-lg shadow-sm">
-    <p className="font-medium text-gray-800">{s.name}</p>
-    <p className="text-sm text-gray-500">{s.email}</p>
-  </div>
-))}
+                    return (
+                      <div key={s._id} className="p-4 bg-white rounded-lg shadow-sm">
+                        <p className="font-medium text-gray-800">{s.name}</p>
+                        <p className="text-sm text-gray-500">{s.email}</p>
 
+                        {studentInterviews.length > 0 ? (
+                          <div className="mt-4 border-t pt-3 space-y-3">
+                            <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">
+                              Scheduled Interviews ({studentInterviews.length})
+                            </p>
 
-{/* INTERVIEW STUDENTS */}
+                            {studentInterviews.map((app) => (
+                              <div key={app._id} className="text-sm text-gray-700 bg-indigo-50 border border-indigo-100 rounded-lg p-3">
+                                <p>
+                                  <span className="font-semibold">Company:</span> {app.jobId?.company || 'N/A'}
+                                </p>
+                                <p>
+                                  <span className="font-semibold">Role:</span> {app.jobId?.title || 'N/A'}
+                                </p>
+                                <p>
+                                  <span className="font-semibold">Date:</span> {formatInterviewDate(app.interview?.date)}
+                                </p>
+                                <p>
+                                  <span className="font-semibold">Time:</span> {app.interview?.time || 'Time not set'}
+                                </p>
+                                <p>
+                                  <span className="font-semibold">Mode:</span> {app.interview?.mode || 'Mode not set'}
+                                </p>
 
-<h3 className="font-semibold text-gray-700 mt-6">
-Students Selected for Interview
-</h3>
+                                {app.interview?.mode === 'online' && app.interview?.meetingLink && (
+                                  <a
+                                    href={app.interview.meetingLink}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-indigo-600 underline"
+                                  >
+                                    Join Meeting
+                                  </a>
+                                )}
 
-{interviewStudents.length === 0 ? (
-  <p className="text-gray-500">No interviews scheduled yet.</p>
-) : (
-  interviewStudents.map(app => (
-
-    <div key={app._id} className="bg-white p-5 rounded-xl shadow">
-
-      <h4 className="font-semibold text-gray-800">
-        {app.studentId?.name}
-      </h4>
-
-      <p className="text-sm text-gray-500">
-        {app.studentId?.email}
-      </p>
-
-      <div className="mt-3 text-sm text-gray-700">
-
-        <p>
-          <b>Job:</b> {app.jobId?.title}
-        </p>
-
-        <p>
-          <b>Company:</b> {app.jobId?.company}
-        </p>
-
-        <p>
-          <b>Interview Date:</b>{" "}
-          {new Date(app.interview?.date).toLocaleDateString()}
-        </p>
-
-        <p>
-          <b>Time:</b> {app.interview?.time}
-        </p>
-
-        {app.interview?.meetingLink && (
-          <a
-            href={app.interview.meetingLink}
-            target="_blank"
-            rel="noreferrer"
-            className="text-indigo-600 underline"
-          >
-            Join Meeting
-          </a>
-        )}
-
-      </div>
-
-    </div>
-
-  ))
-)}
-
-</div>
+                                {app.interview?.mode === 'offline' && app.interview?.location && (
+                                  <p>
+                                    <span className="font-semibold">Location:</span> {app.interview.location}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400 mt-2">No scheduled interviews</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           )}

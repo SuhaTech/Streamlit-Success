@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   Briefcase, Users, Plus, X, Search, Filter, Eye, ChevronDown,
   MapPin, Clock, DollarSign, CheckCircle2, XCircle, Mail, FileText,
-  Star, Building2, ArrowRight, LayoutDashboard, Send, Edit, Trash2,
+  Star, Building2, ArrowRight, LayoutDashboard, Send, Edit, Trash2, CalendarDays,
 } from 'lucide-react';
 
 const STATUS_COLORS = {
@@ -28,6 +28,7 @@ const RecruiterDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showInterviewModal, setShowInterviewModal] = useState(false);
+  const [scheduledInterviews, setScheduledInterviews] = useState([]);
 
 
 const [interviewForm, setInterviewForm] = useState({
@@ -60,6 +61,7 @@ const [interviewForm, setInterviewForm] = useState({
   // Fetch my jobs
   useEffect(() => {
     fetchMyJobs();
+    fetchScheduledInterviews();
   }, []);
 
   const fetchMyJobs = async () => {
@@ -110,6 +112,15 @@ const [interviewForm, setInterviewForm] = useState({
     }
   };
 
+  const fetchScheduledInterviews = async () => {
+    try {
+      const res = await axios.get('/api/applications/scheduled/mine');
+      setScheduledInterviews(res.data.interviews || []);
+    } catch (err) {
+      console.error('Failed to fetch scheduled interviews', err);
+    }
+  };
+
   const handleStatusUpdate = async (appId, newStatus) => {
   console.log('Updating status:', { appId, newStatus });
 
@@ -140,6 +151,8 @@ const handleScheduleInterview = async () => {
     alert("Interview scheduled successfully");
 
     setShowInterviewModal(false);
+    fetchApplicants(selectedJob._id);
+    fetchScheduledInterviews();
 
   } catch (err) {
 
@@ -162,6 +175,11 @@ const handleScheduleInterview = async () => {
 
   const openJobs = jobs.filter(j => j.status === 'open');
   const closedJobs = jobs.filter(j => j.status === 'closed');
+
+  const formatInterviewDate = (dateValue) => {
+    if (!dateValue) return 'Date not set';
+    return new Date(dateValue).toLocaleDateString();
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-indigo-50 to-blue-50">
@@ -196,6 +214,7 @@ const handleScheduleInterview = async () => {
                 <StatCard icon={Briefcase} label="Total Listings" value={jobs.length} color="bg-blue-500" />
                 <StatCard icon={CheckCircle2} label="Open Jobs" value={openJobs.length} color="bg-green-500" />
                 <StatCard icon={Users} label="Total Applicants" value={jobs.reduce((sum, j) => sum + (j.applicantCount || 0), 0)} color="bg-purple-500" />
+                <StatCard icon={CalendarDays} label="Scheduled Interviews" value={scheduledInterviews.length} color="bg-indigo-500" />
               </div>
               <div className="bg-white rounded-2xl shadow-md hover:shadow-lg transition p-6">
                 <h3 className="font-semibold text-gray-800 mb-4">Recent Listings</h3>
@@ -214,6 +233,53 @@ const handleScheduleInterview = async () => {
                   </div>
                 ))}
                 {jobs.length === 0 && <p className="text-gray-400 text-center py-4">No job listings yet</p>}
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-md hover:shadow-lg transition p-6 mt-6">
+                <h3 className="font-semibold text-gray-800 mb-4">Scheduled Interview List</h3>
+
+                {scheduledInterviews.length === 0 ? (
+                  <p className="text-gray-400 text-center py-4">No interviews scheduled yet</p>
+                ) : (
+                  <div className="space-y-3">
+                    {scheduledInterviews.map((item) => (
+                      <div key={item._id} className="border rounded-xl p-4 bg-gray-50/70">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-semibold text-gray-800">{item.studentId?.name || 'Student'}</p>
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
+                            {item.interview?.mode || 'Mode not set'}
+                          </span>
+                        </div>
+
+                        <p className="text-sm text-gray-500 mt-1">{item.studentId?.email || 'Email not available'}</p>
+                        <p className="text-sm text-gray-700 mt-2">
+                          <span className="font-medium">Job:</span> {item.jobId?.title || 'N/A'}
+                        </p>
+                        <p className="text-sm text-gray-700">
+                          <span className="font-medium">Company:</span> {item.jobId?.company || 'N/A'}
+                        </p>
+                        <p className="text-sm text-gray-700">
+                          <span className="font-medium">Date:</span> {formatInterviewDate(item.interview?.date)}
+                        </p>
+                        <p className="text-sm text-gray-700">
+                          <span className="font-medium">Time:</span> {item.interview?.time || 'Time not set'}
+                        </p>
+
+                        {item.interview?.mode === 'online' && item.interview?.meetingLink && (
+                          <p className="text-sm text-gray-700 break-all">
+                            <span className="font-medium">Meeting Link:</span> {item.interview.meetingLink}
+                          </p>
+                        )}
+
+                        {item.interview?.mode === 'offline' && item.interview?.location && (
+                          <p className="text-sm text-gray-700">
+                            <span className="font-medium">Location:</span> {item.interview.location}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

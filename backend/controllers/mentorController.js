@@ -194,24 +194,93 @@ exports.getDepartmentStudents = async (req, res) => {
 
 exports.getInterviewStudents = async (req, res) => {
   try {
+    // CRITICAL: Check if authentication middleware set req.user
+    if (!req.user) {
+      console.error('=== CRITICAL ERROR ===');
+      console.error('req.user is undefined - authMiddleware failed to authenticate');
+      console.error('Request headers:', {
+        authorization: req.headers.authorization ? 'Present' : 'MISSING',
+        cookie: req.headers.cookie ? 'Present' : 'MISSING'
+      });
+      return res.status(401).json({ 
+        message: 'Authentication failed',
+        debug: 'req.user is undefined - check if token was sent in Authorization header'
+      });
+    }
+
     const mentorId = req.user._id;
+    let department = req.user.department;
 
-    // 1️⃣ Find students assigned to this mentor
-    const students = await User.find({ mentorId, role: 'student' }).select('_id name email');
-    const studentIds = students.map(s => s._id);
+    console.log('=== getInterviewStudents called ===');
+    console.log('Step 1: mentorId:', mentorId, 'department from token:', department);
 
-    // 2️⃣ Fetch only scheduled interviews for these students
-    const interviews = await Application.find({
+    // If no department in token, try to find it from DepartmentMentor collection
+    if (!department) {
+      console.log('Step 2a: No department in token, searching DepartmentMentor by mentorId...');
+      const mentorAssignment = await DepartmentMentor.findOne({ mentorId });
+      
+      if (!mentorAssignment) {
+        console.log('Step 2a ERROR: Mentor not found in any DepartmentMentor assignment');
+        return res.status(403).json({ 
+          message: 'Mentor not assigned to any department',
+          debug: `No DepartmentMentor record for mentorId=${mentorId}`
+        });
+      }
+      
+      department = mentorAssignment.department;
+      console.log('Step 2a SUCCESS: Found department from DepartmentMentor:', department);
+    } else {
+      console.log('Step 2b: Department found in token:', department);
+    }
+
+    // Now fetch students by department
+    console.log('Step 3: Finding students with department:', department, ', role: student');
+    const students = await User.find({ department, role: 'student' }).select('_id name email');
+    console.log('Step 3 SUCCESS: Students found:', students.length);
+    if (students.length > 0) {
+      console.log('  Student names:', students.map(s => s.name).join(', '));
+    }
+    
+    const studentIds = students.map((s) => s._id);
+
+    if (!studentIds.length) {
+      console.log('Step 4: No students in department - returning empty interviews');
+      return res.json({ interviews: [], department });
+    }
+
+    console.log('Step 5: Building query for interviews with', studentIds.length, 'students');
+    const queryFilter = {
       studentId: { $in: studentIds },
-      interviewScheduled: true
-    })
-    .populate('studentId', 'name email')
-    .populate('jobId', 'title company location')
-    .lean();
+      $or: [
+        { interviewScheduled: true },
+        { 'interview.date': { $exists: true, $ne: null } },
+      ],
+    };
+    console.log('Step 5: Query filter:', JSON.stringify(queryFilter, null, 2));
 
-    res.json({ interviews });
+    console.log('Step 6: Executing find query...');
+    const interviews = await Application.find(queryFilter);
+    console.log('Step 6 SUCCESS: Found', interviews.length, 'applications with interview data');
+
+    console.log('Step 7: Populating references...');
+    const populatedInterviews = await Application.find(queryFilter)
+      .populate('studentId', 'name email department')
+      .populate('jobId', 'title company location')
+      .sort({ 'interview.date': 1, 'interview.time': 1, createdAt: -1 })
+      .lean();
+    
+    console.log('Step 7 SUCCESS: Populated interviews:', populatedInterviews.length);
+    console.log('Step 8: Sending response to frontend...');
+    res.json({ interviews: populatedInterviews, department });
+    console.log('Step 8 SUCCESS: Response sent');
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to fetch scheduled interviews' });
+    console.error('=== getInterviewStudents ERROR ===');
+    console.error('Error message:', err.message);
+    console.error('Error name:', err.name);
+    console.error('Error stack:', err.stack);
+    res.status(500).json({ 
+      message: 'Failed to fetch scheduled interviews', 
+      error: err.message
+    });
   }
 };
