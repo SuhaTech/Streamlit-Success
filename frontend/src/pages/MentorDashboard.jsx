@@ -35,6 +35,7 @@ const MentorDashboard = () => {
   const fetchInternshipForms = async () => {
     try {
       const res = await axios.get('/api/internship-forms');
+      console.log('📋 Internship Forms Response:', res.data);
       setInternshipForms(res.data);
     } catch (err) {
       console.error('Failed to fetch internship forms', err);
@@ -104,9 +105,37 @@ const MentorDashboard = () => {
   const fetchStudents = async () => {
     try {
       const res = await axios.get('/api/mentors/students');
+      console.log('👥 Students Response:', res.data);
       setStudents(res.data.students || []);
     } catch (err) {
       console.error('Failed to fetch students', err);
+    }
+  };
+
+  const handleViewOfferLetter = async (studentId, fileName = 'offer-letter.pdf') => {
+    try {
+      const response = await axios.get(`/api/upload/offer-letter/view/${studentId}`, {
+        responseType: 'blob',
+      });
+
+      const pdfBlob = new Blob([response.data], { type: 'application/pdf' });
+      const blobUrl = window.URL.createObjectURL(pdfBlob);
+      const opened = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+
+      // Fallback if popup is blocked by browser
+      if (!opened) {
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName || 'offer-letter.pdf';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+
+      setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10000);
+    } catch (err) {
+      console.error('Failed to open offer letter', err);
+      alert(err.response?.data?.message || 'Failed to open offer letter');
     }
   };
 
@@ -278,7 +307,15 @@ const MentorDashboard = () => {
           {/* INTERNSHIP FORMS APPROVALS */}
           {activeTab === 'internship_forms' && (
             <div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-6">Internship Forms</h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-gray-800">Internship Forms</h2>
+                <button
+                  onClick={() => fetchInternshipForms()}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                >
+                  🔄 Refresh Forms
+                </button>
+              </div>
               {internshipForms.length === 0 ? (
                 <div className="bg-white rounded-xl shadow-sm p-12 text-center">
                   <FileSignature size={48} className="mx-auto mb-4 text-gray-300" />
@@ -293,26 +330,46 @@ const MentorDashboard = () => {
                           <h3 className="font-bold text-lg text-gray-900">{form.student?.name} <span className="text-sm font-normal text-gray-500">({form.student?.branch})</span></h3>
                           <p className="text-sm text-gray-600 mt-1"><span className="font-semibold">{form.companyName}</span> • {form.role}</p>
                           <p className="text-xs text-gray-500 mt-1">Stipend: {form.stipend} | Duration: {form.internshipPeriod} | Joining: {new Date(form.joiningDate).toLocaleDateString()}</p>
+                          <div className="mt-2">
+                            {form.student?.offerLetterUrl ? (
+                              <div className="flex flex-col gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewOfferLetter(form.student?._id, form.student?.offerLetterName)}
+                                  className="text-left text-xs font-semibold text-indigo-600 underline"
+                                >
+                                  View Offer Letter
+                                </button>
+                                {form.student?.offerLetterHash && (
+                                  <span className="text-xs text-gray-500 font-mono">
+                                    Verify Hash: {form.student.offerLetterHash.substring(0, 8).toUpperCase()}...
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <p className="text-xs text-amber-600 font-medium">Offer letter not uploaded yet</p>
+                            )}
+                          </div>
                         </div>
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wider ${form.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                           {form.status}
                         </span>
                       </div>
-                      
+
                       {form.extraDetails && (
-                         <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded-lg mb-4">
-                           <span className="font-semibold">Extra Details:</span> {form.extraDetails}
-                         </div>
+                        <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded-lg mb-4">
+                          <span className="font-semibold">Extra Details:</span> {form.extraDetails}
+                        </div>
                       )}
 
                       {form.status === 'pending' ? (
                         <div className="flex items-center gap-4 mt-4 bg-indigo-50 p-4 rounded-xl border border-indigo-100">
                           <div className="flex-1">
                             <label className="block text-xs font-semibold text-indigo-900 uppercase tracking-widest mb-2">Assign Internal Guide</label>
-                            <select 
+                            <select
                               className="w-full border-gray-300 rounded-lg p-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white"
                               value={selectedGuide[form._id] || ''}
-                              onChange={(e) => setSelectedGuide({...selectedGuide, [form._id]: e.target.value})}
+                              onChange={(e) => setSelectedGuide({ ...selectedGuide, [form._id]: e.target.value })}
                             >
                               <option value="">-- Select Guide --</option>
                               {guides.map(g => (
@@ -320,7 +377,7 @@ const MentorDashboard = () => {
                               ))}
                             </select>
                           </div>
-                          <button 
+                          <button
                             onClick={() => handleApproveInternship(form._id)}
                             className="bg-indigo-600 text-white px-6 py-2.5 flexitems-center justify-center rounded-lg text-sm font-bold tracking-wide hover:bg-indigo-700 transition-colors mt-6 whitespace-nowrap"
                           >
@@ -437,7 +494,15 @@ const MentorDashboard = () => {
           {/* STUDENTS TAB */}
           {activeTab === 'students' && (
             <div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-6">My Students</h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-gray-800">My Students</h2>
+                <button
+                  onClick={() => { fetchStudents(); fetchInterviewStudents(); }}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                >
+                  🔄 Refresh Students
+                </button>
+              </div>
               {students.length === 0 ? (
                 <p className="text-gray-500">No students registered in your department yet.</p>
               ) : (
@@ -469,6 +534,27 @@ const MentorDashboard = () => {
                       <div key={s._id} className="p-4 bg-white rounded-lg shadow-sm">
                         <p className="font-medium text-gray-800">{s.name}</p>
                         <p className="text-sm text-gray-500">{s.email}</p>
+
+                        <div className="mt-2">
+                          {s.offerLetterUrl ? (
+                            <div className="flex flex-col gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleViewOfferLetter(s._id, s.offerLetterName)}
+                                className="inline-flex items-center gap-2 text-xs font-semibold text-indigo-600 underline text-left"
+                              >
+                                <FileText size={12} /> View Offer Letter
+                              </button>
+                              {s.offerLetterHash && (
+                                <span className="text-xs text-gray-500 font-mono">
+                                  Verify Hash: {s.offerLetterHash.substring(0, 8).toUpperCase()}...
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-amber-600 font-medium">Offer letter not uploaded yet</p>
+                          )}
+                        </div>
 
                         {studentInterviews.length > 0 ? (
                           <div className="mt-4 border-t pt-3 space-y-3">

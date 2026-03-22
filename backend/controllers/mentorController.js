@@ -181,9 +181,9 @@ exports.getDepartmentStudents = async (req, res) => {
       return res.status(403).json({ message: 'You are not assigned to this department' });
     }
 
-    // Fetch all students from this department
+    // Fetch all students from this department including offer-letter fields for mentor visibility
     const students = await User.find({ department, role: 'student' })
-      .select('name email profile createdAt');
+      .select('name email profile createdAt offerLetterName offerLetterUrl offerLetterHash branch enrollmentNo department');
 
     res.json({ department, students });
   } catch (err) {
