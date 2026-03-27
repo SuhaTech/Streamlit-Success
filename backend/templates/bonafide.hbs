@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bonafide Certificate</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            background-color: white;
+            padding: 20px;
+            line-height: 1.8;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: white;
+            border: 2px solid #000;
+            padding: 40px;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #000;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .institution-name { font-size: 24px; font-weight: bold; color: #1a1a1a; margin-bottom: 5px; }
+        .institution-details { font-size: 12px; color: #333; margin-bottom: 4px; }
+        .document-title {
+            font-size: 20px; font-weight: bold; color: #000;
+            text-transform: uppercase; letter-spacing: 2px; margin-top: 15px;
+        }
+        .date-section { margin-bottom: 20px; font-size: 14px; }
+        .body-text { font-size: 14px; text-align: justify; margin: 18px 0; line-height: 1.9; }
+        .info-table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13px; }
+        .info-table td { padding: 8px 10px; border: 1px solid #999; }
+        .info-table td.lbl { font-weight: bold; width: 30%; background-color: #f0f0f0; }
+        .signature-section {
+            margin-top: 50px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+        }
+        .signature-block { text-align: center; }
+        .signature-line {
+            border-top: 2px solid #000;
+            margin-top: 55px;
+            padding-top: 5px;
+            font-weight: bold;
+            font-size: 13px;
+        }
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 11px;
+            color: #666;
+            border-top: 1px solid #ccc;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <div class="header">
+            <div class="institution-name">{{institutionName}}</div>
+            <div class="institution-details">{{institutionAddress}}</div>
+            <div class="institution-details">Phone: {{institutionPhone}} | Email: {{institutionEmail}}</div>
+            <div class="document-title">Bonafide Certificate</div>
+        </div>
+
+        <!-- DATE & REF -->
+        <div class="date-section">
+            <strong>Date:</strong> {{issueDate}}
+        </div>
+
+        <p style="margin-bottom: 20px;"><strong>TO WHOMSOEVER IT MAY CONCERN</strong></p>
+
+        <!-- BODY -->
+        <div class="body-text">
+            <p>This is to certify that <strong>{{studentName}}</strong>, bearing Enrollment No. <strong>{{enrollmentNo}}</strong>, is a <em>bonafide</em> student of <strong>{{institutionName}}</strong> studying in the <strong>{{branch}}</strong> department during the academic year <strong>{{academicYear}}</strong>.</p>
+        </div>
+
+        <table class="info-table">
+            <tr><td class="lbl">Student Name</td><td>{{studentName}}</td></tr>
+            <tr><td class="lbl">Enrollment No.</td><td>{{enrollmentNo}}</td></tr>
+            <tr><td class="lbl">Branch / Department</td><td>{{branch}}</td></tr>
+            <tr><td class="lbl">Academic Year</td><td>{{academicYear}}</td></tr>
+            <tr><td class="lbl">CGPA</td><td>{{cgpa}}</td></tr>
+            <tr><td class="lbl">Purpose</td><td>{{purpose}}</td></tr>
+        </table>
+
+        <div class="body-text">
+            <p>This certificate is issued at the request of the student for the purpose of <strong>{{purpose}}</strong>. The institution vouches for the student's bonafide student status and good conduct during their period of study.</p>
+        </div>
+
+        <div class="body-text">
+            <p>This certificate is valid for a period of <strong>six (6) months</strong> from the date of issue.</p>
+        </div>
+
+        <!-- SIGNATURES -->
+        <div class="signature-section">
+            <div class="signature-block">
+                <div style="margin-bottom: 55px;"></div>
+                <div class="signature-line">
+                    {{hodName}}<br>
+                    <span style="font-weight:normal;font-size:11px;">Head of Department</span><br>
+                    <span style="font-weight:normal;font-size:11px;">{{institutionName}}</span>
+                </div>
+            </div>
+            <div class="signature-block">
+                <div style="margin-bottom: 55px;"></div>
+                <div class="signature-line">
+                    {{deanName}}<br>
+                    <span style="font-weight:normal;font-size:11px;">Dean / Director</span><br>
+                    <span style="font-weight:normal;font-size:11px;">{{institutionName}}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="footer">
+            <p>Generated Date: {{generatedDate}}</p>
+            <p>Document ID: BON-{{documentId}}</p>
+            <p style="margin-top:8px;font-size:10px;color:#999;">This is a system-generated document. Original signature and institutional seal are required for validity.</p>
+        </div>
+    </div>
+</body>
+</html>

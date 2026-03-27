@@ -72,14 +72,30 @@ const StudentDashboard = () => {
     }
   };
   
-  const handleDownload = (docUrl, docType) => {
+  const handleDownload = async (docUrl, docType) => {
     console.log('📥 Attempting to download:', docUrl);
     if (!docUrl) {
       alert('Document URL not available. Please contact admin.');
       return;
     }
-    // Force download by opening in new window
-    window.open(docUrl, '_blank', 'noopener,noreferrer');
+    try {
+      // Use axios so the Authorization header is sent automatically,
+      // and the request hits the backend (not the React dev server).
+      const res = await axios.get(docUrl, { responseType: 'blob' });
+      const blobUrl = window.URL.createObjectURL(
+        new Blob([res.data], { type: 'application/pdf' })
+      );
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.setAttribute('download', `${docType}_document.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      console.error('Download failed:', err);
+      alert('❌ Download failed: ' + (err.response?.data?.message || err.message));
+    }
   };
   // 1. PROFILE STATE
   const [profile, setProfile] = useState({
@@ -153,6 +169,7 @@ const StudentDashboard = () => {
     fetchInternshipForms();
     fetchApplications();
     fetchJobs();
+    fetchDocuments(); // Load document requests on mount
   }, []);
 
   const fetchJobs = async () => {
@@ -415,8 +432,8 @@ const StudentDashboard = () => {
   } 
   // 2. LOR Validation
   else if (activeDocType === 'LOR Request') {
-    if (!applyingFor || !targetUni || !faculty || !achievements) {
-      alert("⚠️ Please fill all details for LOR Request!");
+    if (!applyingFor) {
+      alert("⚠️ Please fill in what you are applying for (e.g. Higher Studies, Job at XYZ).");
       return;
     }
   } 
@@ -1084,8 +1101,9 @@ const handleOpenDocRequest = (docType) => {
 
           {activeDocType === 'LOR Request' && (
              <div className="space-y-4">
-                <input type="text" placeholder="Target University *" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs border border-slate-100" value={docFormData.targetUni} onChange={(e) => setDocFormData({...docFormData, targetUni: e.target.value})} />
-                <textarea placeholder="Academic Achievements..." className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs h-28 border border-slate-100" value={docFormData.achievements} onChange={(e) => setDocFormData({...docFormData, achievements: e.target.value})} />
+                <input type="text" placeholder="Applying For (e.g. Higher Studies, Job at XYZ) *" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs border border-slate-100" value={docFormData.applyingFor} onChange={(e) => setDocFormData({...docFormData, applyingFor: e.target.value})} />
+                <input type="text" placeholder="Target University / Company (Optional)" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs border border-slate-100" value={docFormData.targetUni} onChange={(e) => setDocFormData({...docFormData, targetUni: e.target.value})} />
+                <textarea placeholder="Academic Achievements / Remarks (Optional)" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs h-28 border border-slate-100" value={docFormData.achievements} onChange={(e) => setDocFormData({...docFormData, achievements: e.target.value})} />
              </div>
           )}
 

@@ -397,3 +397,121 @@ exports.getNocPreview = () => {
 
   return generateHtml(sampleData);
 };
+
+// ─────────────────────────────────────────────────────────────
+//  LOR GENERATOR
+// ─────────────────────────────────────────────────────────────
+
+const getLorTemplate = () => {
+  const templatePath = path.join(__dirname, '../templates/lor.hbs');
+  if (!fs.existsSync(templatePath)) throw new Error(`LOR template not found at ${templatePath}`);
+  return handlebars.compile(fs.readFileSync(templatePath, 'utf8'));
+};
+
+/**
+ * Generate LOR PDF
+ * @param {ObjectId} studentId
+ * @param {Object}   extraData  — { applyingFor, targetUniversity, achievements }
+ *                               stored in doc.reason/metadata at request time
+ */
+exports.generateLor = async (studentId, extraData = {}) => {
+  try {
+    console.log('📄 [LOR Gen] Starting for student:', studentId);
+
+    const student = await User.findById(studentId);
+    if (!student) throw new Error('Student not found');
+
+    const today = new Date();
+    const issueDate = today.toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' });
+    const graduationYear = parseInt(student.graduationYear) || new Date().getFullYear();
+    const admissionYear  = parseInt(student.admissionYear)  || graduationYear - 4;
+
+    const templateData = {
+      ...INSTITUTION_CONFIG,
+      studentName:    student.name || 'Student Name',
+      enrollmentNo:   student.enrollmentNo || 'N/A',
+      branch:         student.branch || student.department || 'Department',
+      academicYear:   `${admissionYear}-${admissionYear + 1}`,
+      cgpa:           student.cgpa || 'N/A',
+      applyingFor:    extraData.applyingFor    || 'Higher Studies / Employment',
+      targetUniversity: extraData.targetUniversity || '',
+      achievements:   extraData.achievements   || '',
+      issueDate,
+      generatedDate:  issueDate,
+      documentId:     student._id.toString().slice(-8).toUpperCase(),
+      hodName:        'Head of Department',
+      deanName:       'Dean / Director',
+    };
+
+    console.log('📄 [LOR Gen] Rendering template...');
+    const html = getLorTemplate()(templateData);
+
+    const fileName  = `LOR_${student.enrollmentNo || student._id}_${Date.now()}.pdf`;
+    const pdfBuffer = await htmlToPdf(html, fileName);
+    const pdfUrl    = await saveToLocal(pdfBuffer, fileName, studentId);
+
+    console.log('📄 [LOR Gen] Done:', pdfUrl);
+    return { success: true, pdfUrl, generatedAt: new Date() };
+  } catch (error) {
+    console.error('💥 [LOR Gen] Error:', error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+//  BONAFIDE GENERATOR
+// ─────────────────────────────────────────────────────────────
+
+const getBonafideTemplate = () => {
+  const templatePath = path.join(__dirname, '../templates/bonafide.hbs');
+  if (!fs.existsSync(templatePath)) throw new Error(`Bonafide template not found at ${templatePath}`);
+  return handlebars.compile(fs.readFileSync(templatePath, 'utf8'));
+};
+
+/**
+ * Generate Bonafide Certificate PDF
+ * @param {ObjectId} studentId
+ * @param {Object}   extraData  — { purpose }
+ */
+exports.generateBonafide = async (studentId, extraData = {}) => {
+  try {
+    console.log('📄 [Bonafide Gen] Starting for student:', studentId);
+
+    const student = await User.findById(studentId);
+    if (!student) throw new Error('Student not found');
+
+    const today = new Date();
+    const issueDate = today.toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' });
+    const graduationYear = parseInt(student.graduationYear) || new Date().getFullYear();
+    const admissionYear  = parseInt(student.admissionYear)  || graduationYear - 4;
+
+    const templateData = {
+      ...INSTITUTION_CONFIG,
+      studentName:  student.name || 'Student Name',
+      enrollmentNo: student.enrollmentNo || 'N/A',
+      branch:       student.branch || student.department || 'Department',
+      academicYear: `${admissionYear}-${admissionYear + 1}`,
+      cgpa:         student.cgpa || 'N/A',
+      purpose:      extraData.purpose || 'General Purpose',
+      issueDate,
+      generatedDate: issueDate,
+      documentId:   student._id.toString().slice(-8).toUpperCase(),
+      hodName:      'Head of Department',
+      deanName:     'Dean / Director',
+    };
+
+    console.log('📄 [Bonafide Gen] Rendering template...');
+    const html = getBonafideTemplate()(templateData);
+
+    const fileName  = `BON_${student.enrollmentNo || student._id}_${Date.now()}.pdf`;
+    const pdfBuffer = await htmlToPdf(html, fileName);
+    const pdfUrl    = await saveToLocal(pdfBuffer, fileName, studentId);
+
+    console.log('📄 [Bonafide Gen] Done:', pdfUrl);
+    return { success: true, pdfUrl, generatedAt: new Date() };
+  } catch (error) {
+    console.error('💥 [Bonafide Gen] Error:', error.message);
+    return { success: false, error: error.message };
+  }
+};
+

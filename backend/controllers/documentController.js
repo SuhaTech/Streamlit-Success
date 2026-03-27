@@ -1,7 +1,7 @@
 const DocumentRequest = require("../models/DocumentRequest");
 const Notification = require("../models/Notification");
 const User = require("../models/User");
-const { generateNoc, validateNocRequirements, getNocPreview } = require("../services/documentGenerator");
+const { generateNoc, validateNocRequirements, getNocPreview, generateLor, generateBonafide } = require('../services/documentGenerator');
 const fs = require('fs');
 const path = require('path');
 
@@ -156,8 +156,62 @@ exports.approveDocument = async (req, res) => {
           console.error('   Error:', pdfError.message);
           console.error('   Stack:', pdfError.stack);
         }
+
+      } else if (doc.type === 'bonafide') {
+        try {
+          console.log('📋 [Dean] Document type: Bonafide');
+          // Extract purpose from the reason field stored at request time
+          const purpose = doc.reason || 'General Purpose';
+          const result = await generateBonafide(doc.studentId, { purpose });
+          if (result.success) {
+            doc.generatedDocUrl = result.pdfUrl;
+            doc.generatedAt = result.generatedAt;
+            doc.documentVersion = 1;
+            const student = await User.findById(doc.studentId);
+            doc.metadata = {
+              studentName: student.name,
+              enrollmentNo: student.enrollmentNo,
+              branch: student.branch,
+              year: student.year,
+              dateOfGeneration: new Date(),
+            };
+            console.log('💾 [Dean] Bonafide URL saved:', doc.generatedDocUrl);
+          } else {
+            console.error('❌ [Dean] Bonafide PDF failed:', result.error);
+          }
+        } catch (pdfError) {
+          console.error('💥 [Dean] Exception during Bonafide generation:', pdfError.message);
+        }
+
+      } else if (doc.type === 'custom') {
+        // LOR (custom type)
+        try {
+          console.log('📋 [Dean] Document type: LOR (custom)');
+          // reason is stored as e.g. "LOR for Higher Studies"
+          const applyingFor = doc.reason ? doc.reason.replace(/^LOR for /i, '') : 'Higher Studies';
+          const result = await generateLor(doc.studentId, { applyingFor });
+          if (result.success) {
+            doc.generatedDocUrl = result.pdfUrl;
+            doc.generatedAt = result.generatedAt;
+            doc.documentVersion = 1;
+            const student = await User.findById(doc.studentId);
+            doc.metadata = {
+              studentName: student.name,
+              enrollmentNo: student.enrollmentNo,
+              branch: student.branch,
+              year: student.year,
+              dateOfGeneration: new Date(),
+            };
+            console.log('💾 [Dean] LOR URL saved:', doc.generatedDocUrl);
+          } else {
+            console.error('❌ [Dean] LOR PDF failed:', result.error);
+          }
+        } catch (pdfError) {
+          console.error('💥 [Dean] Exception during LOR generation:', pdfError.message);
+        }
+
       } else {
-        console.log('⏭️ [Dean] Document type is not NOC, skipping PDF generation');
+        console.log('⏭️ [Dean] Document type is not handled for PDF generation:', doc.type);
       }
       
       console.log('='.repeat(60));
