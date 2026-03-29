@@ -2,18 +2,19 @@ const express = require("express");
 const router = express.Router();
 const protect = require("../middleware/authMiddleware");
 const authorize = require("../middleware/authorize");
+const ROLES = require("../constants/roles");
 const Application = require("../models/Application");
 const Notification = require("../models/Notification");
 const DepartmentMentor = require("../models/DepartmentMentor");
 const {
   applyToJob, getMyApplications, getApplicants, updateApplicationStatus,
   getAllApplications, quickApply, mentorApproveApplication, mentorRejectApplication,
-  getMyScheduledInterviews
+  getMyScheduledInterviews, deleteMyApplication
 } = require("../controllers/applicationController");
 
-router.post("/quick",        protect, authorize("student"),                          quickApply);
-router.post("/:jobId/apply", protect, authorize("student"),                          applyToJob);
-router.post("/",             protect, authorize("student"),                          applyToJob);
+router.post("/quick",        protect, authorize(ROLES.STUDENT),                          quickApply);
+router.post("/:jobId/apply", protect, authorize(ROLES.STUDENT),                          applyToJob);
+router.post("/",             protect, authorize(ROLES.STUDENT),                          applyToJob);
 router.get("/mine", protect, async (req,res)=>{
   
   const applications = await Application
@@ -24,13 +25,14 @@ router.get("/mine", protect, async (req,res)=>{
   res.json({ applications })
 
 }),
-router.get("/all",           protect, authorize("mentor", "placement_cell", "hod", "dean"), getAllApplications);
-router.get("/job/:jobId",    protect, authorize("recruiter"),                        getApplicants)
-router.get("/scheduled/mine", protect, authorize("recruiter", "placement_cell"),    getMyScheduledInterviews);
-router.put("/:id/mentor-approve", protect, authorize("mentor"),                      mentorApproveApplication);
-router.put("/:id/mentor-reject",  protect, authorize("mentor"),                      mentorRejectApplication);
-router.put("/:id/status",    protect, authorize("recruiter"),                        updateApplicationStatus);
-router.put("/:id/cancel-interview", protect, authorize("recruiter", "placement_cell"), async (req, res) => {
+router.delete("/:id", protect, authorize(ROLES.STUDENT), deleteMyApplication);
+router.get("/all",           protect, authorize(ROLES.MENTOR, ROLES.PLACEMENT_CELL, ROLES.HOD, ROLES.DEAN), getAllApplications);
+router.get("/job/:jobId",    protect, authorize(ROLES.RECRUITER),                        getApplicants)
+router.get("/scheduled/mine", protect, authorize(ROLES.RECRUITER, ROLES.PLACEMENT_CELL),    getMyScheduledInterviews);
+router.put("/:id/mentor-approve", protect, authorize(ROLES.MENTOR),                      mentorApproveApplication);
+router.put("/:id/mentor-reject",  protect, authorize(ROLES.MENTOR),                      mentorRejectApplication);
+router.put("/:id/status",    protect, authorize(ROLES.RECRUITER),                        updateApplicationStatus);
+router.put("/:id/cancel-interview", protect, authorize(ROLES.RECRUITER, ROLES.PLACEMENT_CELL, ROLES.HOD, ROLES.DEAN), async (req, res) => {
   try {
     const app = await Application.findById(req.params.id)
       .populate("studentId", "_id name department")
@@ -38,7 +40,8 @@ router.put("/:id/cancel-interview", protect, authorize("recruiter", "placement_c
 
     if (!app) return res.status(404).json({ message: "Application not found" });
 
-    if (app.jobId?.postedBy && req.user.role !== "placement_cell") {
+    const elevatedRoles = [ROLES.PLACEMENT_CELL, ROLES.HOD, ROLES.DEAN];
+    if (app.jobId?.postedBy && !elevatedRoles.includes(req.user.role)) {
       if (app.jobId.postedBy.toString() !== req.user._id.toString()) {
         return res.status(403).json({ message: "Not authorized" });
       }
@@ -99,7 +102,7 @@ router.put("/:id/cancel-interview", protect, authorize("recruiter", "placement_c
     res.status(500).json({ message: "Failed to cancel interview", error: error.message });
   }
 });
-router.put("/:id/reschedule-interview", protect, authorize("recruiter", "placement_cell"), async (req, res) => {
+router.put("/:id/reschedule-interview", protect, authorize(ROLES.RECRUITER, ROLES.PLACEMENT_CELL), async (req, res) => {
   try {
     const { date, time, mode, meetingLink, location } = req.body;
 
@@ -109,7 +112,7 @@ router.put("/:id/reschedule-interview", protect, authorize("recruiter", "placeme
 
     if (!app) return res.status(404).json({ message: "Application not found" });
 
-    if (app.jobId?.postedBy && req.user.role !== "placement_cell") {
+    if (app.jobId?.postedBy && req.user.role !== ROLES.PLACEMENT_CELL) {
       if (app.jobId.postedBy.toString() !== req.user._id.toString()) {
         return res.status(403).json({ message: "Not authorized" });
       }
@@ -164,7 +167,7 @@ router.put("/:id/reschedule-interview", protect, authorize("recruiter", "placeme
     res.status(500).json({ message: "Server error" });
   }
 });
-router.put("/schedule-interview/:jobId", protect, authorize("recruiter", "placement_cell"), async (req, res) => {
+router.put("/schedule-interview/:jobId", protect, authorize(ROLES.RECRUITER, ROLES.PLACEMENT_CELL), async (req, res) => {
   try {
 
     const { date, time, mode, meetingLink, location } = req.body;

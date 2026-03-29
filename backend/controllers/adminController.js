@@ -2,6 +2,7 @@ const User = require("../models/User");
 const Job = require("../models/Job");
 const Application = require("../models/Application");
 const DocumentRequest = require("../models/DocumentRequest");
+const InternshipForm = require("../models/InternshipForm");
 
 // GET /api/admin/users
 exports.getAllUsers = async (req, res) => {
@@ -22,6 +23,17 @@ exports.getAllUsers = async (req, res) => {
       User.countDocuments(filter),
     ]);
     res.json({ users, total, pages: Math.ceil(total / limit) });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// GET /api/admin/users/:id
+exports.getUserById = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('-password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({ user });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -91,6 +103,26 @@ exports.getStats = async (req, res) => {
   }
 };
 
+// DELETE /api/admin/students/:studentId/offer-letter - Delete single student's offer letter
+exports.deleteStudentOfferLetter = async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    const student = await User.findOneAndUpdate(
+      { _id: studentId, role: 'student' },
+      { $unset: { offerLetterUrl: 1, offerLetterName: 1, offerLetterHash: 1 } },
+      { new: true }
+    );
+    if (!student) {
+      return res.status(404).json({ message: 'Student not found' });
+    }
+
+    return res.json({ message: 'Offer letter deleted successfully' });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
 // PUT /api/admin/students/:studentId/assign-mentor
 exports.assignMentorToStudent = async (req, res) => {
   try {
@@ -120,6 +152,76 @@ exports.assignMentorToStudent = async (req, res) => {
     res.json({ 
       message: 'Mentor assigned successfully',
       student: student.toObject() 
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// GET /api/admin/students/offer-letters
+exports.getOfferLetterTracker = async (req, res) => {
+  try {
+    const { search, department, status = 'all' } = req.query;
+
+    // Base filter for students
+    const filter = { role: 'student' };
+
+    if (department) {
+      filter.department = department;
+    }
+
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { enrollmentNo: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Get all matching students first
+    let allStudents = await User.find(filter)
+      .select('_id name email enrollmentNo branch department offerLetterName offerLetterUrl offerLetterHash mentorId guideId updatedAt')
+      .populate('mentorId', 'name email')
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    const studentIds = allStudents.map(s => s._id);
+    
+    // Get internship and job data
+    const [internshipStudents, jobStudents] = await Promise.all([
+      InternshipForm.find({ student: { $in: studentIds } }).select('student').lean(),
+      Application.find({ 
+        studentId: { $in: studentIds },
+        status: { $in: ['selected', 'offered', 'offer_accepted'] }
+      }).select('studentId').lean()
+    ]);
+
+    const internshipStudentIds = new Set(internshipStudents.map(f => f.student.toString()));
+    const jobStudentIds = new Set(jobStudents.map(a => a.studentId.toString()));
+
+    // Filter: (guideId exists AND (internship OR job)) OR (offerLetterUrl exists)
+    let students = allStudents.filter(s => {
+      const hasGuideAndWork = s.guideId && (internshipStudentIds.has(s._id.toString()) || jobStudentIds.has(s._id.toString()));
+      const hasUploadedOffer = s.offerLetterUrl;
+      return hasGuideAndWork || hasUploadedOffer;
+    });
+
+    // Apply status filter
+    if (status === 'uploaded') {
+      students = students.filter(s => !!s.offerLetterUrl);
+    } else if (status === 'missing') {
+      students = students.filter(s => !s.offerLetterUrl);
+    }
+
+    const uploaded = students.filter((s) => !!s.offerLetterUrl).length;
+
+    res.json({
+      summary: {
+        total: students.length,
+        uploaded,
+        missing: students.length - uploaded,
+      },
+      students,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });

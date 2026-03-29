@@ -4,10 +4,23 @@ const User = require("../models/User");
 // GET /api/notifications/mine
 exports.getMyNotifications = async (req, res) => {
   try {
-    const notifications = await Notification.find({ userId: req.user._id })
+    const { read, type, limit } = req.query;
+    const filter = { userId: req.user._id };
+
+    if (read === 'true') filter.read = true;
+    if (read === 'false') filter.read = false;
+    if (type) filter.type = type;
+
+    const parsedLimit = Math.min(100, Math.max(1, Number(limit) || 50));
+
+    const [notifications, unreadCount] = await Promise.all([
+      Notification.find(filter)
       .sort({ createdAt: -1 })
-      .limit(50);
-    res.json({ notifications });
+      .limit(parsedLimit),
+      Notification.countDocuments({ userId: req.user._id, read: false }),
+    ]);
+
+    res.json({ notifications, unreadCount });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

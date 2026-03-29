@@ -254,6 +254,77 @@ exports.getAllDocuments = async (req, res) => {
   }
 };
 
+// GET /api/documents/analytics/dean - dean/hod analytics overview
+exports.getDeanAnalytics = async (req, res) => {
+  try {
+    const [approved, rejected, pending, deptBreakdown, processedDocs] = await Promise.all([
+      DocumentRequest.countDocuments({ 'deanApproval.status': 'approved' }),
+      DocumentRequest.countDocuments({ 'deanApproval.status': 'rejected' }),
+      DocumentRequest.countDocuments({ overallStatus: 'hod_approved' }),
+      DocumentRequest.aggregate([
+        {
+          $match: {
+            $or: [
+              { overallStatus: 'hod_approved' },
+              { 'deanApproval.status': { $in: ['approved', 'rejected'] } },
+            ],
+          },
+        },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'studentId',
+            foreignField: '_id',
+            as: 'student',
+          },
+        },
+        {
+          $unwind: {
+            path: '$student',
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $group: {
+            _id: { $ifNull: ['$student.department', 'Unknown'] },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1 } },
+      ]),
+      DocumentRequest.find({ 'deanApproval.status': { $in: ['approved', 'rejected'] } })
+        .select('createdAt deanApproval.at')
+        .lean(),
+    ]);
+
+    const totalApprovals = approved + rejected;
+
+    const avgTurnaroundTime = processedDocs.length
+      ? processedDocs.reduce((acc, doc) => {
+          const decidedAt = doc?.deanApproval?.at ? new Date(doc.deanApproval.at) : null;
+          const createdAt = doc?.createdAt ? new Date(doc.createdAt) : null;
+          if (!decidedAt || !createdAt) return acc;
+          const diffDays = (decidedAt - createdAt) / (1000 * 60 * 60 * 24);
+          return acc + (diffDays > 0 ? diffDays : 0);
+        }, 0) / processedDocs.length
+      : 0;
+
+    res.json({
+      totalApprovals,
+      approved,
+      rejected,
+      pending,
+      avgTurnaroundTime: Number(avgTurnaroundTime.toFixed(1)),
+      deptBreakdown: deptBreakdown.map((item) => ({
+        department: item._id || 'Unknown',
+        count: item.count || 0,
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // ===== NOC SPECIFIC ENDPOINTS =====
 
 // GET /api/documents/noc/preview — Get NOC template preview
@@ -365,5 +436,19 @@ exports.downloadDocument = async (req, res) => {
   } catch (err) {
     console.error('❌ [Download] Error:', err.message);
     res.status(500).json({ message: err.message });
+  }
+};
+
+// DELETE /api/documents/:id - Delete single document request
+exports.deleteDocumentById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await DocumentRequest.findByIdAndDelete(id);
+    if (!deleted) {
+      return res.status(404).json({ message: 'Document request not found' });
+    }
+    return res.json({ message: 'Document request deleted successfully' });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
   }
 };
