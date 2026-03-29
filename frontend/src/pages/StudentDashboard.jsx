@@ -10,7 +10,7 @@ import {
   LogOut, Edit, Github, Linkedin, Plus, Upload, X, 
   Mail, Phone, ShieldCheck, Search, Briefcase, Clock, FileText, CheckCircle2, User, GraduationCap,
   Calendar, BookOpen, Star, Filter, Download, ArrowRight, LayoutDashboard, Send,Camera
-,Award,FileCheck,Zap,Settings,} from 'lucide-react';
+,Award,FileCheck,Zap,Settings, Trash2,} from 'lucide-react';
 
 const StudentDashboard = () => {
   const { user, logout } = useAuth();
@@ -43,14 +43,24 @@ const StudentDashboard = () => {
   });
   
   const [submittedForms, setSubmittedForms] = useState([]);
+  const [progressNow, setProgressNow] = useState(Date.now());
 
   useEffect(() => {
     if (activeTab === 'internship_form') {
       fetchInternshipForms();
     } else if (activeTab === 'docs') {
       fetchDocuments();
+    } else if (activeTab === 'logs') {
+      fetchMyLogs();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setProgressNow(Date.now());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const fetchInternshipForms = async () => {
     try {
@@ -169,6 +179,7 @@ const StudentDashboard = () => {
     fetchInternshipForms();
     fetchApplications();
     fetchJobs();
+    fetchMyLogs();
     fetchDocuments(); // Load document requests on mount
   }, []);
 
@@ -391,8 +402,33 @@ const StudentDashboard = () => {
 
   const hasInternshipFormSubmitted = submittedForms.length > 0;
 
+  const mapLogForUi = (log) => ({
+    id: log._id,
+    week: log.weekNumber,
+    hours: log.hoursWorked || '',
+    tasks: log.logText,
+    date: log.createdAt ? new Date(log.createdAt).toLocaleDateString() : '',
+    status: log.status === 'approved'
+      ? 'Approved'
+      : log.status === 'needs_revision'
+        ? 'Needs Revision'
+        : log.status === 'under_review'
+          ? 'Under Review'
+          : 'Pending Review'
+  });
 
-  const handleLogSubmit = () => {
+  const fetchMyLogs = async () => {
+    try {
+      const res = await axios.get('/api/logs/mine');
+      const mapped = (res.data.logs || []).map(mapLogForUi);
+      setLogs(mapped);
+    } catch (err) {
+      console.error('Failed to fetch weekly logs', err);
+    }
+  };
+
+
+  const handleLogSubmit = async () => {
     if (!hasInternshipFormSubmitted) {
       alert("Please submit Internship Form first. Then you can add Weekly Logs.");
       setActiveTab('internship_form');
@@ -403,24 +439,31 @@ const StudentDashboard = () => {
       alert("Please fill in the Week and Tasks.");
       return;
     }
-    const newLog = {
-      ...logInput,
-      id: Date.now(),
-      date: new Date().toLocaleDateString(),
-      status: 'Pending Review'
-    };
-    setLogs([newLog, ...logs]);
-    setLogInput({ week: '', hours: '', tasks: '' });
+
+    try {
+      const payload = {
+        weekNumber: Number(logInput.week),
+        title: `Week ${logInput.week} Update`,
+        logText: logInput.tasks,
+        hoursWorked: Number(logInput.hours || 0),
+      };
+
+      const res = await axios.post('/api/logs', payload);
+      const created = res.data.log ? mapLogForUi(res.data.log) : null;
+      if (created) {
+        setLogs((prev) => [created, ...prev]);
+      } else {
+        await fetchMyLogs();
+      }
+
+      setLogInput({ week: '', hours: '', tasks: '' });
+      alert('Weekly log submitted successfully');
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to submit weekly log');
+    }
   };
   //NOC
   const handleSubmit = async () => {
-  if (!(profile.offerLetterUrl || profile.offerLetterName)) {
-    alert('Offer Letter is mandatory before requesting any document.');
-    setActiveDocType(null);
-    setShowModal(true);
-    return;
-  }
-
   const { orgName, role, mode, startDate, duration, applyingFor, targetUni, faculty, achievements, bonafidePurpose } = docFormData;
 
   // 1. NOC Validation
@@ -537,11 +580,22 @@ const StudentDashboard = () => {
 
   // 4. JOBS & APPLICATIONS STATE
   const [myApplications, setMyApplications] = useState([]);
-  const scheduledInterview = myApplications.find(
-  app =>
-    ["interview_scheduled", "interview"].includes(app.status) &&
-    app.interview?.date
-);
+  const [deletingApplicationId, setDeletingApplicationId] = useState('');
+
+  const handleDeleteApplication = async (applicationId) => {
+    const ok = window.confirm('Delete this application from submission history?');
+    if (!ok) return;
+
+    try {
+      setDeletingApplicationId(applicationId);
+      await axios.delete(`/api/applications/${applicationId}`);
+      await fetchApplications();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to delete application');
+    } finally {
+      setDeletingApplicationId('');
+    }
+  };
 
   const formatInterviewDate = (dateValue) => {
     if (!dateValue) return 'Date not set';
@@ -628,17 +682,71 @@ const getProfileStatus = () => {
 };
 
 const status = getProfileStatus();
-const hasOfferLetterUploaded = Boolean(profile.offerLetterUrl || profile.offerLetterName);
 const latestGuideAssignedForm = submittedForms
   .filter((form) => form.status === 'approved' && form.internalGuide)
   .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))[0];
+const latestApprovedForm = submittedForms
+  .filter((form) => form.status === 'approved')
+  .sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt))[0];
+
+const parseInternshipDurationInDays = (periodText) => {
+  if (!periodText) return 180;
+  const period = String(periodText).toLowerCase();
+  const numberMatch = period.match(/\d+/);
+  const amount = numberMatch ? Number(numberMatch[0]) : 6;
+  if (period.includes('week')) return amount * 7;
+  if (period.includes('day')) return amount;
+  return amount * 30;
+};
+
+const getInternshipProgressMeta = (form) => {
+  if (!form?.joiningDate) {
+    return {
+      percent: 0,
+      progressLabel: 'Start date not available',
+      endDateLabel: 'End date unknown',
+      statusLabel: 'Pending Start',
+    };
+  }
+
+  const startDate = new Date(form.joiningDate);
+  const totalDays = Math.max(1, parseInternshipDurationInDays(form.internshipPeriod));
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + totalDays);
+
+  const elapsedDays = Math.floor((progressNow - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  const rawPercent = (elapsedDays / totalDays) * 100;
+  const percent = Math.min(100, Math.max(0, Math.round(rawPercent)));
+  const daysLeft = Math.max(0, totalDays - Math.max(0, elapsedDays));
+
+  let statusLabel = 'In Progress';
+  if (elapsedDays < 0) statusLabel = 'Not Started';
+  else if (percent >= 100) statusLabel = 'Completed';
+
+  return {
+    percent,
+    progressLabel: elapsedDays < 0
+      ? `Starts in ${Math.abs(elapsedDays)} day(s)`
+      : `${daysLeft} day(s) left`,
+    endDateLabel: endDate.toLocaleDateString(),
+    statusLabel,
+  };
+};
+
+const internshipProgress = getInternshipProgressMeta(latestApprovedForm);
+const expectedWeeks = latestApprovedForm
+  ? Math.max(1, Math.ceil(parseInternshipDurationInDays(latestApprovedForm.internshipPeriod) / 7))
+  : 0;
+const loggedWeeks = new Set(
+  logs
+    .map((log) => String(log.week || '').trim())
+    .filter(Boolean)
+).size;
+const logCompletionPercent = expectedWeeks > 0
+  ? Math.min(100, Math.round((loggedWeeks / expectedWeeks) * 100))
+  : 0;
 
 const handleOpenDocRequest = (docType) => {
-  if (!hasOfferLetterUploaded) {
-    alert('Please upload your Offer Letter first. Only then you can request documents.');
-    setShowModal(true);
-    return;
-  }
   setActiveDocType(docType);
 };
 // --------------------------
@@ -657,62 +765,6 @@ const handleOpenDocRequest = (docType) => {
       />
 
       <main className="max-w-[1400px] mx-auto p-10">
-        {latestGuideAssignedForm && (
-          <div className="bg-emerald-50 border border-emerald-200 p-5 rounded-xl mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-            <div>
-              <p className="text-xs font-bold text-emerald-700 uppercase">Internal Guide Assigned</p>
-              <p className="text-sm text-emerald-900 font-semibold mt-1">
-                {latestGuideAssignedForm.internalGuide?.name}
-                {latestGuideAssignedForm.internalGuide?.email ? ` (${latestGuideAssignedForm.internalGuide.email})` : ''}
-              </p>
-              <p className="text-xs text-emerald-700 mt-1">
-                For internship at {latestGuideAssignedForm.companyName} ({latestGuideAssignedForm.role})
-              </p>
-            </div>
-            <button
-              onClick={() => setActiveTab('internship_form')}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-emerald-700 transition-colors"
-            >
-              View Details
-            </button>
-          </div>
-        )}
-        {scheduledInterview && (
-  <div className="bg-indigo-50 border border-indigo-200 p-5 rounded-xl mb-6 flex justify-between items-center">
-    
-    <div>
-      <p className="text-xs font-bold text-indigo-600 uppercase">
-        Interview Scheduled
-      </p>
-
-      <p className="font-semibold">
-        {scheduledInterview.company} — {scheduledInterview.role}
-      </p>
-
-      <p className="text-sm text-gray-600">
-        {formatInterviewDate(scheduledInterview.interview.date)} • {scheduledInterview.interview.time || 'Time not set'} • {scheduledInterview.interview.mode || 'Mode not set'}
-      </p>
-
-      {scheduledInterview.interview.mode === 'offline' && scheduledInterview.interview.location && (
-        <p className="text-sm text-gray-600">
-          Location: {scheduledInterview.interview.location}
-        </p>
-      )}
-    </div>
-
-    {scheduledInterview.interview.meetingLink && (
-      <a
-        href={scheduledInterview.interview.meetingLink}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm"
-      >
-        Join Interview
-      </a>
-    )}
-
-  </div>
-)}
   <div className="grid grid-cols-12 gap-8"> {/* Grid Wrapper Added */}
     
     {/* 1. PROFILE SUMMARY SIDEBAR (4 Columns) */}
@@ -763,23 +815,63 @@ const handleOpenDocRequest = (docType) => {
             <div className="relative z-10">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
                 <div>
-                  <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 text-[9px] font-black uppercase tracking-widest rounded-full border border-emerald-500/30">Active Internship</span>
-                  <h3 className="text-4xl font-black italic tracking-tighter uppercase leading-none mt-3">Microsoft</h3>
-                  <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-2">Software Engineer Intern</p>
+                  <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 text-[9px] font-black uppercase tracking-widest rounded-full border border-emerald-500/30">
+                    {latestApprovedForm ? internshipProgress.statusLabel : 'No Active Internship'}
+                  </span>
+                  <h3 className="text-4xl font-black italic tracking-tighter uppercase leading-none mt-3">
+                    {latestApprovedForm?.companyName || 'Internship Not Started'}
+                  </h3>
+                  <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-2">
+                    {latestApprovedForm?.role || 'Submit internship form to start tracking'}
+                  </p>
                 </div>
                 <div className="bg-white/5 backdrop-blur-md p-4 rounded-2xl border border-white/10">
-                  <p className="text-[9px] font-black opacity-40 uppercase mb-1">Mentor</p>
-                  <p className="text-sm font-bold italic text-emerald-400">Dr. Rajesh Kumar</p>
+                  <p className="text-[9px] font-black opacity-40 uppercase mb-1">Internal Guide</p>
+                  <p className="text-sm font-bold italic text-emerald-400">
+                    {latestApprovedForm?.internalGuide?.name || latestGuideAssignedForm?.internalGuide?.name || 'Not Assigned'}
+                  </p>
+                  {(latestApprovedForm?.internalGuide?.email || latestGuideAssignedForm?.internalGuide?.email) && (
+                    <p className="text-[10px] text-slate-300 mt-1">
+                      {latestApprovedForm?.internalGuide?.email || latestGuideAssignedForm?.internalGuide?.email}
+                    </p>
+                  )}
                 </div>
               </div>
               <div className="space-y-4">
                 <div className="flex justify-between items-end">
-                  <p className="text-2xl font-black italic">45% <span className="text-[12px] opacity-40 font-normal">Completed</span></p>
-                  <p className="text-sm font-bold">June 2026</p>
+                  <p className="text-2xl font-black italic">
+                    {latestApprovedForm ? `${internshipProgress.percent}%` : '0%'}{' '}
+                    <span className="text-[12px] opacity-40 font-normal">Completed</span>
+                  </p>
+                  <p className="text-sm font-bold">
+                    {latestApprovedForm ? `Expected End: ${internshipProgress.endDateLabel}` : 'No timeline available'}
+                  </p>
                 </div>
                 <div className="w-full h-4 bg-white/10 rounded-full overflow-hidden border border-white/5">
-                  <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-1000" style={{ width: '45%' }}></div>
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-1000"
+                    style={{ width: `${latestApprovedForm ? internshipProgress.percent : 0}%` }}
+                  ></div>
                 </div>
+                <p className="text-[11px] text-slate-300 font-semibold">
+                  {latestApprovedForm
+                    ? `${internshipProgress.progressLabel} • Started: ${new Date(latestApprovedForm.joiningDate).toLocaleDateString()}`
+                    : 'Once your internship is approved, assigned guide and progress will appear here in real time.'}
+                </p>
+                {latestApprovedForm && (
+                  <div className="mt-2 bg-white/5 border border-white/10 rounded-2xl px-4 py-3">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-slate-200">
+                      <p>Weekly Logs</p>
+                      <p>{loggedWeeks}/{expectedWeeks} weeks logged ({logCompletionPercent}%)</p>
+                    </div>
+                    <div className="mt-2 w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-cyan-400 to-blue-400 transition-all duration-700"
+                        style={{ width: `${logCompletionPercent}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -806,6 +898,16 @@ const handleOpenDocRequest = (docType) => {
         <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 px-3 py-1 rounded-full">
           {app.status}
         </span>
+        <div className="mt-2">
+          <button
+            onClick={() => handleDeleteApplication(app.id)}
+            disabled={deletingApplicationId === app.id}
+            className="text-[10px] font-bold uppercase px-3 py-1 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-1"
+          >
+            <Trash2 size={12} />
+            {deletingApplicationId === app.id ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -910,22 +1012,13 @@ const handleOpenDocRequest = (docType) => {
                 <h4 className="font-black text-lg mb-1 italic uppercase">{doc}</h4>
                 <button
                   onClick={() => handleOpenDocRequest(doc)}
-                  disabled={!hasOfferLetterUploaded}
-                  className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase mt-4 transition-all ${hasOfferLetterUploaded ? 'bg-black text-white' : 'bg-slate-200 text-slate-500 cursor-not-allowed'}`}
+                  className="w-full py-4 rounded-2xl text-[10px] font-black uppercase mt-4 transition-all bg-black text-white"
                 >
-                  {hasOfferLetterUploaded ? 'Request Now' : 'Upload Offer Letter First'}
+                  Request Now
                 </button>
               </div>
             ))}
           </div>
-
-          {!hasOfferLetterUploaded && (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl px-5 py-4">
-              <p className="text-xs font-bold text-amber-700">
-                Upload your Offer Letter from profile section before requesting NOC, LOR, or Bonafide.
-              </p>
-            </div>
-          )}
 
           {/* Request Tracking */}
           <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-sm">
@@ -1029,6 +1122,58 @@ const handleOpenDocRequest = (docType) => {
               <input type="text" placeholder="Internship Period (e.g., 6 Months) *" className="p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold text-xs focus:border-black transition-colors" value={internshipFormData.internshipPeriod} onChange={(e) => setInternshipFormData({...internshipFormData, internshipPeriod: e.target.value})} />
               <textarea placeholder="Extra Details (Optional)" className="col-span-1 md:col-span-2 p-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none font-bold text-xs h-32 focus:border-black transition-colors" value={internshipFormData.extraDetails} onChange={(e) => setInternshipFormData({...internshipFormData, extraDetails: e.target.value})} />
             </div>
+
+            <div className="mb-8 bg-gradient-to-br from-emerald-50 to-blue-50 border border-emerald-200 p-8 rounded-[2rem]">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 bg-emerald-600 text-white rounded-xl flex items-center justify-center">
+                  <FileText size={20}/>
+                </div>
+                <div>
+                  <h4 className="text-sm font-black uppercase italic tracking-widest">Offer Letter Upload</h4>
+                  <p className="text-[8px] text-slate-500 font-bold mt-1">Upload here as part of Internship Form</p>
+                </div>
+              </div>
+
+              <label className={`flex flex-col items-center justify-center w-full h-[160px] border-2 border-dashed rounded-[2rem] cursor-pointer group transition-all ${uploading.offerLetter ? 'border-emerald-500 bg-emerald-100/50' : profile.offerLetterName ? 'border-emerald-400 bg-emerald-50' : 'border-emerald-200 bg-white hover:bg-emerald-50/50'}`}>
+                {uploading.offerLetter ? (
+                  <div className="flex flex-col items-center gap-3 w-full px-6">
+                    <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-[9px] font-black text-emerald-600 uppercase">Uploading Offer Letter...</p>
+                    <div className="w-full h-2 bg-emerald-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-emerald-600 transition-all duration-300 rounded-full" style={{ width: `${uploadProgress.offerLetter}%` }}></div>
+                    </div>
+                    <p className="text-[9px] font-black text-emerald-600">{uploadProgress.offerLetter}%</p>
+                  </div>
+                ) : (
+                  <>
+                    <Upload className={`w-6 h-6 mb-2 transition-colors ${profile.offerLetterName ? 'text-emerald-600' : 'text-emerald-400 group-hover:text-emerald-600'}`} />
+                    <p className="text-[9px] font-black text-emerald-700 uppercase px-4 text-center">{profile.offerLetterName || 'Upload Your Offer Letter (PDF)'}</p>
+                    {profile.offerLetterName && <p className="text-[8px] text-emerald-600 font-bold mt-1">Ready to Share</p>}
+                  </>
+                )}
+                <input type="file" className="hidden" accept=".pdf" onChange={handleOfferLetterUpload} disabled={uploading.offerLetter}/>
+              </label>
+
+              {profile.offerLetterUrl && !uploading.offerLetter && (
+                <div className="flex gap-3 mt-4">
+                  <a
+                    href={profile.offerLetterUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-2 py-3 bg-emerald-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all"
+                  >
+                    <FileText size={12}/> View Offer Letter
+                  </a>
+                  <button
+                    onClick={() => setProfile({...profile, offerLetterName: '', offerLetterUrl: ''})}
+                    className="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-[8px] font-black uppercase hover:bg-red-100 transition-all"
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+            </div>
+
             <button onClick={handleInternshipSubmit} className="w-full py-5 bg-black text-white rounded-[2rem] font-black text-sm uppercase tracking-[0.2em] hover:bg-slate-800 transition-all shadow-xl shadow-black/10 flex items-center justify-center gap-3">
               <Send size={18} /> Submit Application
             </button>
@@ -1343,66 +1488,6 @@ const handleOpenDocRequest = (docType) => {
                       </div>
                     )}
                   </div>
-                </div>
-              </div>
-            </section>
-
-            {/* SECTION 3.5: OFFER LETTER UPLOAD */}
-            <section className="space-y-6">
-              <div className="bg-gradient-to-br from-emerald-50 to-blue-50 border border-emerald-200 p-8 rounded-[2.5rem]">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 bg-emerald-600 text-white rounded-xl flex items-center justify-center">
-                    <FileText size={20}/>
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-black uppercase italic tracking-widest">Offer Letter Upload</h4>
-                    <p className="text-[8px] text-slate-500 font-bold mt-1">📤 Share with Mentor & Placement Cell</p>
-                  </div>
-                </div>
-                
-                <label className={`flex flex-col items-center justify-center w-full h-[160px] border-2 border-dashed rounded-[2rem] cursor-pointer group transition-all ${uploading.offerLetter ? 'border-emerald-500 bg-emerald-100/50' : profile.offerLetterName ? 'border-emerald-400 bg-emerald-50' : 'border-emerald-200 bg-white hover:bg-emerald-50/50'}`}>
-                  {uploading.offerLetter ? (
-                    <div className="flex flex-col items-center gap-3 w-full px-6">
-                      <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                      <p className="text-[9px] font-black text-emerald-600 uppercase">Uploading Offer Letter…</p>
-                      <div className="w-full h-2 bg-emerald-200 rounded-full overflow-hidden">
-                        <div className="h-full bg-emerald-600 transition-all duration-300 rounded-full" style={{ width: `${uploadProgress.offerLetter}%` }}></div>
-                      </div>
-                      <p className="text-[9px] font-black text-emerald-600">{uploadProgress.offerLetter}%</p>
-                    </div>
-                  ) : (
-                    <>
-                      <Upload className={`w-6 h-6 mb-2 transition-colors ${profile.offerLetterName ? 'text-emerald-600' : 'text-emerald-400 group-hover:text-emerald-600'}`} />
-                      <p className="text-[9px] font-black text-emerald-700 uppercase px-4 text-center">{profile.offerLetterName || 'Upload Your Offer Letter (PDF)'}</p>
-                      {profile.offerLetterName && <p className="text-[8px] text-emerald-600 font-bold mt-1">✓ Ready to Share</p>}
-                    </>
-                  )}
-                  <input type="file" className="hidden" accept=".pdf" onChange={handleOfferLetterUpload} disabled={uploading.offerLetter}/>
-                </label>
-
-                {profile.offerLetterUrl && !uploading.offerLetter && (
-                  <div className="flex gap-3 mt-4">
-                    <a
-                      href={profile.offerLetterUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-emerald-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all"
-                    >
-                      <FileText size={12}/> View Offer Letter
-                    </a>
-                    <button 
-                      onClick={() => setProfile({...profile, offerLetterName: '', offerLetterUrl: ''})}
-                      className="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-[8px] font-black uppercase hover:bg-red-100 transition-all"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                )}
-                
-                <div className="mt-4 p-3 bg-white/60 rounded-lg border border-emerald-100">
-                  <p className="text-[8px] text-slate-600 font-bold">
-                    💡 <strong>Note:</strong> Your Mentor and Placement Cell will be notified once you upload your offer letter. This helps track placements and provides documentation for your internship.
-                  </p>
                 </div>
               </div>
             </section>

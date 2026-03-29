@@ -83,6 +83,23 @@ exports.getMyApplications = async (req, res) => {
   }
 };
 
+// DELETE /api/applications/:id — student deletes own application from submission history
+exports.deleteMyApplication = async (req, res) => {
+  try {
+    const app = await Application.findById(req.params.id);
+    if (!app) return res.status(404).json({ message: 'Application not found' });
+
+    if (app.studentId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    await app.deleteOne();
+    res.json({ message: 'Application deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // GET /api/jobs/:jobId/applicants — recruiter views applicants
 exports.getApplicants = async (req, res) => {
   try {
@@ -156,7 +173,12 @@ exports.getAllApplications = async (req, res) => {
       }
       // If still no students found, show all apps as before
     }
-    // For placement_cell, hod, dean: show all applications (query = {})
+    if (req.user.role === 'hod' && req.user.department) {
+      const deptStudents = await User.find({ department: req.user.department, role: 'student' }).select('_id');
+      const studentIds = deptStudents.map((s) => s._id);
+      query = { studentId: { $in: studentIds } };
+    }
+    // For placement_cell and dean: show all applications (query = {})
 
     const apps = await Application.find(query)
   .populate('studentId', 'name email department')
@@ -223,7 +245,18 @@ exports.quickApply = async (req, res) => {
 // PUT /api/applications/:id/status — recruiter updates application status
 exports.updateApplicationStatus = async (req, res) => {
   try {
-    const { status, recruiterNote } = req.body;
+    const {
+      status,
+      recruiterNote,
+      joiningDate,
+      joiningStatus,
+      ctc,
+      workMode,
+      employmentType,
+      offerAcceptedAt,
+      organizationName,
+      joiningLocation,
+    } = req.body;
     const app = await Application.findById(req.params.id).populate('jobId', 'title postedBy');
     if (!app) return res.status(404).json({ message: 'Application not found' });
 
@@ -245,6 +278,19 @@ exports.updateApplicationStatus = async (req, res) => {
 
     app.status = status;
     if (recruiterNote) app.recruiterNote = recruiterNote;
+    if (joiningDate !== undefined) app.joiningDate = joiningDate || null;
+    if (joiningStatus !== undefined) app.joiningStatus = joiningStatus || 'pending';
+    if (ctc !== undefined) app.ctc = ctc || '';
+    if (workMode !== undefined) app.workMode = workMode || undefined;
+    if (employmentType !== undefined) app.employmentType = employmentType || '';
+    if (offerAcceptedAt !== undefined) app.offerAcceptedAt = offerAcceptedAt || null;
+    if (organizationName !== undefined) app.organizationName = organizationName || '';
+    if (joiningLocation !== undefined) app.joiningLocation = joiningLocation || '';
+
+    if (status === 'offer_accepted' && !app.offerAcceptedAt) {
+      app.offerAcceptedAt = new Date();
+    }
+
     await app.save();
 
     const jobTitle = app.jobId?.title || app.jobTitle || 'the position';

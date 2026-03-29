@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from '../api/axios';
-import { Bell, X, Check, CheckCheck } from 'lucide-react';
+import { Bell, X, CheckCheck } from 'lucide-react';
 
 const NotificationBell = () => {
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [viewFilter, setViewFilter] = useState('all');
   const dropdownRef = useRef(null);
 
   // Fetch notifications on mount and poll every 30 seconds
@@ -13,7 +14,7 @@ const NotificationBell = () => {
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [viewFilter]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -26,15 +27,17 @@ const NotificationBell = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
-      const res = await axios.get('/api/notifications/mine');
+      const params = { limit: 50 };
+      if (viewFilter === 'unread') params.read = false;
+      const res = await axios.get('/api/notifications/mine', { params });
       setNotifications(res.data.notifications || []);
-      setUnreadCount((res.data.notifications || []).filter(n => !n.read).length);
+      setUnreadCount(res.data.unreadCount || 0);
     } catch (err) {
       // Silently fail — notifications are non-critical
     }
-  };
+  }, [viewFilter]);
 
   const markAsRead = async (id) => {
     try {
@@ -102,6 +105,21 @@ const NotificationBell = () => {
                 <X size={16} />
               </button>
             </div>
+          </div>
+
+          <div className="px-4 py-2 border-b flex items-center gap-2">
+            <button
+              onClick={() => setViewFilter('all')}
+              className={`px-2 py-1 text-xs rounded-md ${viewFilter === 'all' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setViewFilter('unread')}
+              className={`px-2 py-1 text-xs rounded-md ${viewFilter === 'unread' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'}`}
+            >
+              Unread
+            </button>
           </div>
 
           {/* Notifications List */}

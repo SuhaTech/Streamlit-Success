@@ -112,3 +112,46 @@ exports.reviewLog = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+// POST /api/logs/reminder - internal guide sends reminder to assigned students
+exports.sendLogReminder = async (req, res) => {
+  try {
+    const { studentIds = [] } = req.body;
+
+    const assignedForms = await InternshipForm.find({
+      internalGuide: req.user._id,
+      status: 'approved',
+      student: { $ne: null },
+    }).select('student');
+
+    const assignedStudentIds = [...new Set(assignedForms.map((f) => String(f.student)))];
+
+    const targetStudentIds = (Array.isArray(studentIds) && studentIds.length > 0)
+      ? studentIds.map(String).filter((id) => assignedStudentIds.includes(id))
+      : assignedStudentIds;
+
+    if (targetStudentIds.length === 0) {
+      return res.status(400).json({ message: 'No valid assigned students found for reminder' });
+    }
+
+    const guideName = req.user?.name || 'Your internal guide';
+    await Promise.all(
+      targetStudentIds.map((studentId) =>
+        Notification.send(
+          studentId,
+          'announcement',
+          'Weekly Log Reminder',
+          `${guideName} requested you to submit/update your weekly log. Please submit it from your dashboard.`,
+          '/student-dashboard'
+        )
+      )
+    );
+
+    return res.json({
+      message: `Reminder sent to ${targetStudentIds.length} student(s)`,
+      count: targetStudentIds.length,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};

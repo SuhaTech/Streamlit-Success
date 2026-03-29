@@ -19,6 +19,21 @@ const applicationSchema = new mongoose.Schema({
   recruiterNote:  String,
   offerLetterUrl: String,
   offerDeadline:  Date,
+  joiningDate: Date,
+  joiningStatus: {
+    type: String,
+    enum: ['pending', 'joined', 'deferred', 'unknown'],
+    default: 'pending',
+  },
+  ctc: String,
+  workMode: {
+    type: String,
+    enum: ['onsite', 'hybrid', 'remote'],
+  },
+  employmentType: String,
+  offerAcceptedAt: Date,
+  organizationName: String,
+  joiningLocation: String,
   // Mentor approval tracking
   mentorApproval: {
   status:       { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },

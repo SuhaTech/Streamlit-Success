@@ -4,20 +4,43 @@ import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import {
   FileCheck, CheckCircle2, XCircle, LayoutDashboard, ArrowRight,
-  AlertCircle, Users, BarChart3, Building, Clock,
+  AlertCircle, Users, BarChart3, Building, Clock, Filter, Download,
 } from 'lucide-react';
 
 const HODDashboard = () => {
   const { user } = useAuth();
+  const rejectionTemplates = [
+    'Missing mandatory fields',
+    'Missing authorized signature/stamp',
+    'Invalid or mismatched dates',
+    'Unsupported document format',
+    'Insufficient supporting details',
+  ];
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [pendingDocs, setPendingDocs] = useState([]);
   const [applications, setApplications] = useState([]);
+  const [sharedReports, setSharedReports] = useState([]);
+  const [sharedReportsLoading, setSharedReportsLoading] = useState(false);
+  const [sharedReportsError, setSharedReportsError] = useState('');
+  const [expandedReport, setExpandedReport] = useState(null);
+  const [sharedFromDate, setSharedFromDate] = useState('');
+  const [sharedToDate, setSharedToDate] = useState('');
   const [loading, setLoading] = useState(false);
-  const [approvalNote, setApprovalNote] = useState('');
+  const [docNotes, setDocNotes] = useState({});
+  const [filterSearch, setFilterSearch] = useState('');
+  const [filterDocType, setFilterDocType] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [selectedDocIds, setSelectedDocIds] = useState([]);
+  const [bulkNote, setBulkNote] = useState('');
+  const [bulkDecision, setBulkDecision] = useState('approved');
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   useEffect(() => {
     fetchPendingDocs();
     fetchApplications();
+    fetchSharedReports();
   }, []);
 
   const fetchPendingDocs = async () => {
@@ -41,22 +64,64 @@ const HODDashboard = () => {
     }
   };
 
+  const fetchSharedReports = async () => {
+    setSharedReportsLoading(true);
+    setSharedReportsError('');
+    try {
+      const res = await axios.get('/api/review-schedule/shared-reports/list');
+      setSharedReports(res.data.reports || []);
+    } catch (err) {
+      setSharedReportsError(err.response?.data?.message || 'Failed to fetch shared reports');
+      setSharedReports([]);
+    } finally {
+      setSharedReportsLoading(false);
+    }
+  };
+
   const handleApprove = async (docId, action) => {
     try {
+      const note = docNotes[docId] || '';
+      if (action === 'rejected' && !note.trim()) {
+        alert('Rejection reason is required. Please add a note.');
+        return;
+      }
       await axios.put(`/api/documents/${docId}/approve`, {
         decision: action,
-        note: approvalNote,
+        note,
       });
-      setApprovalNote('');
+      setDocNotes((prev) => {
+        const next = { ...prev };
+        delete next[docId];
+        return next;
+      });
       fetchPendingDocs();
     } catch (err) {
       alert(err.response?.data?.message || 'Action failed');
     }
   };
 
+  const getSlaMeta = (createdAt) => {
+    if (!createdAt) return { hours: 0, tag: 'new', label: 'New', className: 'bg-gray-100 text-gray-700' };
+    const diffMs = Date.now() - new Date(createdAt).getTime();
+    const hours = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60)));
+
+    if (hours >= 72) {
+      return { hours, tag: 'critical', label: `${hours}h (Critical)`, className: 'bg-red-100 text-red-700' };
+    }
+    if (hours >= 48) {
+      return { hours, tag: 'overdue', label: `${hours}h (Overdue)`, className: 'bg-amber-100 text-amber-700' };
+    }
+    if (hours >= 24) {
+      return { hours, tag: 'due-soon', label: `${hours}h (Due Soon)`, className: 'bg-yellow-100 text-yellow-700' };
+    }
+    return { hours, tag: 'new', label: `${hours}h`, className: 'bg-green-100 text-green-700' };
+  };
+
   const tabs = [
     { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { key: 'approvals', label: 'Approvals', icon: FileCheck },
+    { key: 'selected-students', label: 'Selected Students', icon: CheckCircle2 },
+    { key: 'shared-reports', label: 'Shared Reports', icon: Download },
     { key: 'department', label: 'Department', icon: Building },
   ];
 
@@ -74,6 +139,215 @@ const HODDashboard = () => {
   const formatInterviewDate = (dateValue) => {
     if (!dateValue) return 'Date not set';
     return new Date(dateValue).toLocaleDateString();
+  };
+
+  const getDocType = (doc) => doc?.documentType || doc?.type || 'N/A';
+
+  const getFilteredPendingDocs = () => {
+    return pendingDocs.filter((doc) => {
+      const docType = getDocType(doc).toLowerCase();
+      const search = filterSearch.trim().toLowerCase();
+      const searchMatch = !search
+        || doc?.studentId?.name?.toLowerCase().includes(search)
+        || doc?.studentId?.email?.toLowerCase().includes(search);
+      const typeMatch = !filterDocType || docType.includes(filterDocType.toLowerCase());
+
+      let dateMatch = true;
+      if (filterDateFrom || filterDateTo) {
+        const createdAt = new Date(doc.createdAt);
+        if (filterDateFrom) dateMatch = dateMatch && createdAt >= new Date(filterDateFrom);
+        if (filterDateTo) {
+          const toEnd = new Date(filterDateTo);
+          toEnd.setHours(23, 59, 59, 999);
+          dateMatch = dateMatch && createdAt <= toEnd;
+        }
+      }
+
+      return searchMatch && typeMatch && dateMatch;
+    });
+  };
+
+  const toggleDocSelection = (docId) => {
+    setSelectedDocIds((prev) => (
+      prev.includes(docId) ? prev.filter((id) => id !== docId) : [...prev, docId]
+    ));
+  };
+
+  const toggleSelectAllFiltered = () => {
+    const filteredIds = getFilteredPendingDocs().map((doc) => doc._id);
+    const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedDocIds.includes(id));
+    if (allSelected) {
+      setSelectedDocIds((prev) => prev.filter((id) => !filteredIds.includes(id)));
+      return;
+    }
+    setSelectedDocIds((prev) => Array.from(new Set([...prev, ...filteredIds])));
+  };
+
+  const handleBulkAction = async () => {
+    const filteredDocs = getFilteredPendingDocs();
+    const selectedDocs = filteredDocs.filter((doc) => selectedDocIds.includes(doc._id));
+    if (!selectedDocs.length) {
+      alert('Select at least one document');
+      return;
+    }
+
+    const noteToSend = bulkNote.trim();
+    if (bulkDecision === 'rejected' && !noteToSend) {
+      alert('Rejection reason is required for bulk reject');
+      return;
+    }
+
+    try {
+      setBulkLoading(true);
+      const requests = selectedDocs.map((doc) => axios.put(`/api/documents/${doc._id}/approve`, {
+        decision: bulkDecision,
+        note: noteToSend,
+      }));
+      const results = await Promise.allSettled(requests);
+      const failedCount = results.filter((r) => r.status === 'rejected').length;
+      const successCount = results.length - failedCount;
+
+      if (failedCount > 0) {
+        alert(`${successCount} updated, ${failedCount} failed`);
+      }
+
+      setSelectedDocIds([]);
+      setBulkNote('');
+      await fetchPendingDocs();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Bulk action failed');
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const exportApprovalsCsv = () => {
+    const rows = getFilteredPendingDocs();
+    if (!rows.length) {
+      alert('No approvals to export');
+      return;
+    }
+
+    const headers = ['Student Name', 'Email', 'Document Type', 'Overall Status', 'Mentor Status', 'Requested On', 'SLA'];
+    const data = rows.map((doc) => [
+      doc?.studentId?.name || 'N/A',
+      doc?.studentId?.email || 'N/A',
+      getDocType(doc),
+      doc?.overallStatus || 'N/A',
+      doc?.mentorApproval?.status || 'pending',
+      doc?.createdAt ? new Date(doc.createdAt).toLocaleDateString() : 'N/A',
+      getSlaMeta(doc?.createdAt).label,
+    ]);
+
+    const csv = [headers.join(','), ...data.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `hod-approvals-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const shortlistedCount = applications.filter((app) => app.status === 'shortlisted').length;
+  const selectedCount = applications.filter((app) => ['selected', 'offered', 'offer_accepted'].includes(app.status)).length;
+  const interviewCount = applications.filter((app) => app.status === 'interview_scheduled' || app.interviewScheduled).length;
+  const overdueApprovalsCount = pendingDocs.filter((doc) => getSlaMeta(doc?.createdAt).tag === 'overdue' || getSlaMeta(doc?.createdAt).tag === 'critical').length;
+  const topOrganizations = Object.entries(
+    applications.reduce((acc, app) => {
+      const company = app?.jobId?.company || app?.company;
+      if (!company) return acc;
+      acc[company] = (acc[company] || 0) + 1;
+      return acc;
+    }, {})
+  ).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+  const getFilteredSharedReports = () => {
+    return sharedReports.filter((report) => {
+      if (!sharedFromDate && !sharedToDate) return true;
+      const createdAt = new Date(report.createdAt);
+      let match = true;
+      if (sharedFromDate) match = match && createdAt >= new Date(sharedFromDate);
+      if (sharedToDate) {
+        const toEnd = new Date(sharedToDate);
+        toEnd.setHours(23, 59, 59, 999);
+        match = match && createdAt <= toEnd;
+      }
+      return match;
+    });
+  };
+
+  const exportSharedReportsCsv = () => {
+    const reports = getFilteredSharedReports();
+    if (!reports.length) {
+      alert('No shared reports to export');
+      return;
+    }
+
+    const headers = [
+      'Report Shared At',
+      'Shared By',
+      'Filter Mode',
+      'Filter Date',
+      'Total',
+      'Present',
+      'Absent',
+      'Student Name',
+      'Student Email',
+      'Attendance Status',
+    ];
+
+    const rows = [];
+    reports.forEach((report) => {
+      const details = report.attendanceDetails || [];
+      if (!details.length) {
+        rows.push([
+          new Date(report.createdAt).toLocaleString(),
+          report.sharedBy?.name || report.sharedByName || 'Internal Guide',
+          report.filterMode || 'N/A',
+          report.filterDate || 'N/A',
+          report.summary?.total || 0,
+          report.summary?.present || 0,
+          report.summary?.absent || 0,
+          'N/A',
+          'N/A',
+          'N/A',
+        ]);
+        return;
+      }
+
+      details.forEach((item) => {
+        rows.push([
+          new Date(report.createdAt).toLocaleString(),
+          report.sharedBy?.name || report.sharedByName || 'Internal Guide',
+          report.filterMode || 'N/A',
+          report.filterDate || 'N/A',
+          report.summary?.total || 0,
+          report.summary?.present || 0,
+          report.summary?.absent || 0,
+          item.studentName || 'N/A',
+          item.studentEmail || 'N/A',
+          item.status || 'N/A',
+        ]);
+      });
+    });
+
+    const csv = [
+      headers.join(','),
+      ...rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `hod-shared-reports-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -107,7 +381,7 @@ const HODDashboard = () => {
                 <StatCard icon={FileCheck} label="Pending Approvals" value={pendingDocs.length} color="bg-yellow-500" />
                 <StatCard icon={Users} label="Selected Students" value={selectedApplications.length} color="bg-green-500" />
                 <StatCard icon={Clock} label="Scheduled Interviews" value={scheduledInterviews.length} color="bg-indigo-500" />
-                <StatCard icon={BarChart3} label="Total Applications" value={applications.length} color="bg-blue-500" />
+                <StatCard icon={BarChart3} label="Overdue Approvals" value={overdueApprovalsCount} color="bg-red-500" />
               </div>
 
               {pendingDocs.length > 0 && (
@@ -118,7 +392,7 @@ const HODDashboard = () => {
                   {pendingDocs.slice(0, 5).map(doc => (
                     <div key={doc._id} className="flex items-center justify-between py-3 border-b last:border-0">
                       <div>
-                        <p className="font-medium text-gray-800">{doc.documentType}</p>
+                        <p className="font-medium text-gray-800">{getDocType(doc)}</p>
                         <p className="text-sm text-gray-500">
                           Student: {doc.studentId?.name} • Mentor Approved: {doc.mentorApproval?.at ? new Date(doc.mentorApproval.at).toLocaleDateString() : '-'}
                         </p>
@@ -136,7 +410,7 @@ const HODDashboard = () => {
                   <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
                     <Clock size={18} className="text-indigo-500" /> Scheduled Interviews
                   </h3>
-                  {scheduledInterviews.slice(0, 6).map(app => (
+                  {scheduledInterviews.slice(0, 6).map((app) => (
                     <div key={app._id} className="py-3 border-b last:border-0">
                       <p className="font-medium text-gray-800">{app.studentId?.name || 'Student'}</p>
                       <p className="text-sm text-gray-500">
@@ -144,23 +418,6 @@ const HODDashboard = () => {
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
                         {formatInterviewDate(app.interview?.date)} • {app.interview?.time || 'Time not set'} • {app.interview?.mode || 'Mode not set'}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {selectedApplications.length > 0 && (
-                <div className="bg-white rounded-xl shadow-sm p-6 mt-6">
-                  <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
-                    <CheckCircle2 size={18} className="text-green-500" /> Selected Students
-                  </h3>
-                  {selectedApplications.slice(0, 6).map(app => (
-                    <div key={app._id} className="py-3 border-b last:border-0">
-                      <p className="font-medium text-gray-800">{app.studentId?.name || 'Student'}</p>
-                      <p className="text-sm text-gray-500">{app.studentId?.email || 'No email'}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {app.jobId?.title || app.jobTitle || 'Role'} • {app.jobId?.company || app.company || 'Company'}
                       </p>
                     </div>
                   ))}
@@ -176,31 +433,178 @@ const HODDashboard = () => {
             </div>
           )}
 
+          {/* SELECTED STUDENTS TAB */}
+          {activeTab === 'selected-students' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-6">Selected Students</h2>
+              {selectedApplications.length === 0 ? (
+                <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                  <CheckCircle2 size={48} className="mx-auto mb-4 text-green-300" />
+                  <p className="text-gray-500">No selected students yet</p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl shadow-sm p-6">
+                  <div className="space-y-3">
+                    {selectedApplications.map((app) => (
+                      <div key={app._id} className="p-4 border rounded-lg hover:bg-gray-50">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-800">{app.studentId?.name || 'Student'}</p>
+                            <p className="text-sm text-gray-500">{app.studentId?.email || 'No email'}</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {app.jobId?.title || app.jobTitle || 'Role'} • {app.jobId?.company || app.company || 'Company'}
+                            </p>
+                          </div>
+                          <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                            app.status === 'offered' || app.status === 'offer_accepted'
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-green-100 text-green-700'
+                          }`}>
+                            {app.status === 'offer_accepted' ? 'Offer Accepted' : app.status === 'offered' ? 'Offered' : 'Selected'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* APPROVALS */}
           {activeTab === 'approvals' && (
             <div>
               <h2 className="text-2xl font-bold text-gray-800 mb-6">Document Approvals (HOD Level)</h2>
+              <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Filter size={18} className="text-gray-600" />
+                  <h3 className="font-semibold text-gray-700">Filters</h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                  <input
+                    type="text"
+                    placeholder="Search student name/email"
+                    value={filterSearch}
+                    onChange={(e) => setFilterSearch(e.target.value)}
+                    className="border rounded-lg p-2 text-sm"
+                  />
+                  <select
+                    value={filterDocType}
+                    onChange={(e) => setFilterDocType(e.target.value)}
+                    className="border rounded-lg p-2 text-sm"
+                  >
+                    <option value="">All Document Types</option>
+                    <option value="noc">NOC</option>
+                    <option value="bonafide">Bonafide</option>
+                    <option value="custom">LOR/Custom</option>
+                  </select>
+                  <input
+                    type="date"
+                    value={filterDateFrom}
+                    onChange={(e) => setFilterDateFrom(e.target.value)}
+                    className="border rounded-lg p-2 text-sm"
+                  />
+                  <input
+                    type="date"
+                    value={filterDateTo}
+                    onChange={(e) => setFilterDateTo(e.target.value)}
+                    className="border rounded-lg p-2 text-sm"
+                  />
+                  <button
+                    onClick={exportApprovalsCsv}
+                    className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center justify-center gap-2"
+                  >
+                    <Download size={14} /> Export CSV
+                  </button>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                  <span className="px-2 py-1 rounded bg-red-100 text-red-700">
+                    Critical (72h+): {pendingDocs.filter((doc) => getSlaMeta(doc?.createdAt).tag === 'critical').length}
+                  </span>
+                  <span className="px-2 py-1 rounded bg-amber-100 text-amber-700">
+                    Overdue (48h+): {pendingDocs.filter((doc) => getSlaMeta(doc?.createdAt).tag === 'overdue').length}
+                  </span>
+                  <span className="px-2 py-1 rounded bg-yellow-100 text-yellow-700">
+                    Due Soon (24h+): {pendingDocs.filter((doc) => getSlaMeta(doc?.createdAt).tag === 'due-soon').length}
+                  </span>
+                </div>
+              </div>
               {loading ? (
                 <p className="text-gray-500">Loading...</p>
-              ) : pendingDocs.length === 0 ? (
+              ) : getFilteredPendingDocs().length === 0 ? (
                 <div className="bg-white rounded-xl shadow-sm p-12 text-center">
                   <CheckCircle2 size={48} className="mx-auto mb-4 text-green-300" />
                   <p className="text-gray-500">No pending documents</p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {pendingDocs.map(doc => (
+                  <div className="bg-white rounded-xl shadow-sm p-4">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={(() => {
+                              const filteredIds = getFilteredPendingDocs().map((doc) => doc._id);
+                              return filteredIds.length > 0 && filteredIds.every((id) => selectedDocIds.includes(id));
+                            })()}
+                            onChange={toggleSelectAllFiltered}
+                          />
+                          Select all filtered
+                        </label>
+                        <span className="text-sm text-gray-500">Selected: {selectedDocIds.length}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={bulkDecision}
+                          onChange={(e) => setBulkDecision(e.target.value)}
+                          className="border rounded-lg p-2 text-sm"
+                        >
+                          <option value="approved">Bulk Approve</option>
+                          <option value="rejected">Bulk Reject</option>
+                        </select>
+                        <input
+                          value={bulkNote}
+                          onChange={(e) => setBulkNote(e.target.value)}
+                          placeholder={bulkDecision === 'rejected' ? 'Rejection reason (required)' : 'Optional note for all selected'}
+                          className="border rounded-lg p-2 text-sm min-w-[240px]"
+                        />
+                        <button
+                          onClick={handleBulkAction}
+                          disabled={bulkLoading}
+                          className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-60"
+                        >
+                          {bulkLoading ? 'Updating...' : 'Apply Bulk Action'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {getFilteredPendingDocs().map(doc => (
                     <div key={doc._id} className="bg-white rounded-xl shadow-sm p-6">
                       <div className="flex items-center justify-between mb-4">
                         <div>
-                          <h3 className="font-semibold text-gray-800">{doc.documentType}</h3>
+                          <h3 className="font-semibold text-gray-800">{getDocType(doc)}</h3>
                           <p className="text-sm text-gray-500">
                             Student: {doc.studentId?.name} • Status: {doc.overallStatus.replace('_', ' ')}
                           </p>
                         </div>
-                        <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
-                          HOD Review
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-2 text-xs text-gray-600">
+                            <input
+                              type="checkbox"
+                              checked={selectedDocIds.includes(doc._id)}
+                              onChange={() => toggleDocSelection(doc._id)}
+                            />
+                            Select
+                          </label>
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${getSlaMeta(doc.createdAt).className}`}>
+                            SLA: {getSlaMeta(doc.createdAt).label}
+                          </span>
+                          <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
+                            HOD Review
+                          </span>
+                        </div>
                       </div>
 
                       {/* Approval chain status */}
@@ -230,8 +634,29 @@ const HODDashboard = () => {
                       )}
 
                       <div className="flex items-center gap-3">
-                        <input type="text" placeholder="Add a note (optional)" className="flex-1 border rounded-lg p-2 text-sm"
-                          value={approvalNote} onChange={e => setApprovalNote(e.target.value)} />
+                        <div className="flex-1 space-y-2">
+                          <select
+                            className="w-full border rounded-lg p-2 text-sm"
+                            value=""
+                            onChange={(e) => {
+                              const template = e.target.value;
+                              if (!template) return;
+                              setDocNotes((prev) => ({ ...prev, [doc._id]: template }));
+                            }}
+                          >
+                            <option value="">Select rejection reason template</option>
+                            {rejectionTemplates.map((template) => (
+                              <option key={template} value={template}>{template}</option>
+                            ))}
+                          </select>
+                          <textarea
+                            placeholder="Add a note (required for rejection)"
+                            className="w-full border rounded-lg p-2 text-sm"
+                            rows="2"
+                            value={docNotes[doc._id] || ''}
+                            onChange={(e) => setDocNotes((prev) => ({ ...prev, [doc._id]: e.target.value }))}
+                          />
+                        </div>
                         <button onClick={() => handleApprove(doc._id, 'approved')}
                           className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700 flex items-center gap-1">
                           <CheckCircle2 size={14} /> Approve
@@ -252,9 +677,160 @@ const HODDashboard = () => {
           {activeTab === 'department' && (
             <div>
               <h2 className="text-2xl font-bold text-gray-800 mb-6">Department Overview</h2>
-              <div className="bg-white rounded-xl shadow-sm p-6">
-                <p className="text-gray-500 text-center py-8">Department analytics will appear here once students start using the system.</p>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                <StatCard icon={Users} label="Total Applications" value={applications.length} color="bg-blue-500" />
+                <StatCard icon={BarChart3} label="Shortlisted" value={shortlistedCount} color="bg-indigo-500" />
+                <StatCard icon={CheckCircle2} label="Selected/Offered" value={selectedCount} color="bg-green-500" />
+                <StatCard icon={Clock} label="Scheduled Interviews" value={interviewCount} color="bg-amber-500" />
               </div>
+              <div className="bg-white rounded-xl shadow-sm p-6">
+                <h3 className="font-semibold text-gray-800 mb-4">Top Organizations (By Applications)</h3>
+                {topOrganizations.length === 0 ? (
+                  <p className="text-gray-500 text-center py-6">No organization data available yet</p>
+                ) : (
+                  <div className="space-y-3">
+                    {topOrganizations.map(([company, count]) => (
+                      <div key={company} className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+                        <p className="text-sm font-medium text-gray-700">{company}</p>
+                        <span className="text-sm font-semibold text-gray-800">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SHARED REPORTS TAB */}
+          {activeTab === 'shared-reports' && (
+            <div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-6">Shared Attendance Reports</h2>
+              <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <input
+                    type="date"
+                    value={sharedFromDate}
+                    onChange={(e) => setSharedFromDate(e.target.value)}
+                    className="border rounded-lg p-2 text-sm"
+                  />
+                  <input
+                    type="date"
+                    value={sharedToDate}
+                    onChange={(e) => setSharedToDate(e.target.value)}
+                    className="border rounded-lg p-2 text-sm"
+                  />
+                  <button
+                    onClick={() => {
+                      setSharedFromDate('');
+                      setSharedToDate('');
+                    }}
+                    className="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-300"
+                  >
+                    Clear Dates
+                  </button>
+                  <button
+                    onClick={exportSharedReportsCsv}
+                    className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center justify-center gap-2"
+                  >
+                    <Download size={14} /> Export CSV
+                  </button>
+                </div>
+              </div>
+              {sharedReportsLoading ? (
+                <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                  <p className="text-gray-500">Loading shared reports...</p>
+                </div>
+              ) : sharedReportsError ? (
+                <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                  <p className="text-red-600 mb-4">{sharedReportsError}</p>
+                  <button
+                    onClick={fetchSharedReports}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : getFilteredSharedReports().length === 0 ? (
+                <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                  <Download size={48} className="mx-auto mb-4 text-gray-300" />
+                  <p className="text-gray-500">No shared attendance reports found for selected date range</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {getFilteredSharedReports().map((report) => (
+                    <div key={report._id} className="bg-white rounded-xl shadow-sm overflow-hidden">
+                      <div
+                        className="p-6 border-b cursor-pointer hover:bg-gray-50"
+                        onClick={() => setExpandedReport(expandedReport === report._id ? null : report._id)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3">
+                              <h3 className="font-semibold text-gray-800">Attendance Report</h3>
+                              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                                {report.filterMode === 'all' ? 'All Attendance' : `Date: ${report.filterDate || 'N/A'}`}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-600 mt-2">
+                              Shared by: {report.sharedBy?.name || report.sharedByName || 'Internal Guide'} • {new Date(report.createdAt).toLocaleString()}
+                            </p>
+                          </div>
+                          <div className="flex gap-4 text-center">
+                            <div>
+                              <p className="text-2xl font-bold text-gray-800">{report.summary?.total || 0}</p>
+                              <p className="text-xs text-gray-500">Total</p>
+                            </div>
+                            <div>
+                              <p className="text-2xl font-bold text-green-600">{report.summary?.present || 0}</p>
+                              <p className="text-xs text-gray-500">Present</p>
+                            </div>
+                            <div>
+                              <p className="text-2xl font-bold text-red-600">{report.summary?.absent || 0}</p>
+                              <p className="text-xs text-gray-500">Absent</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {expandedReport === report._id && (
+                        <div className="p-6 border-t">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b bg-gray-50">
+                                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Student Name</th>
+                                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Email</th>
+                                  <th className="px-4 py-3 text-center font-semibold text-gray-700">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(report.attendanceDetails || []).map((record, idx) => (
+                                  <tr key={idx} className="border-b hover:bg-gray-50">
+                                    <td className="px-4 py-3 text-gray-800">{record.studentName || 'N/A'}</td>
+                                    <td className="px-4 py-3 text-gray-600">{record.studentEmail || 'N/A'}</td>
+                                    <td className="px-4 py-3 text-center">
+                                      <span
+                                        className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                          record.status === 'present' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                        }`}
+                                      >
+                                        {record.status?.toUpperCase() || 'N/A'}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          {(!report.attendanceDetails || report.attendanceDetails.length === 0) && (
+                            <p className="text-center text-gray-500 py-4">No attendance records</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </main>

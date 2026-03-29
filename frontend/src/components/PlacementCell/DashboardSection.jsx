@@ -31,6 +31,9 @@ const DashboardSection = ({ stats }) => {
               <span className="font-semibold text-gray-800">{rc.count}</span>
             </div>
           ))}
+          {(!stats?.roleCounts || stats.roleCounts.length === 0) && (
+            <p className="text-gray-400 text-sm text-center py-4">No role data</p>
+          )}
         </div>
         <div className="bg-white rounded-xl shadow-sm p-6">
           <h3 className="font-semibold text-gray-800 mb-4">Application Stats</h3>
