@@ -8,7 +8,7 @@ import UserProfile from '../components/UserProfile';
 import { useAuth } from '../context/AuthContext';
 import { 
   Github, Linkedin, Upload, X, 
-  FileText, Briefcase, Filter, Download, ArrowRight, Send, Camera, Award, FileCheck, Zap, Trash2
+  FileText, Briefcase, Filter, Download, ArrowRight, Send, Camera, Award, FileCheck, Zap, Trash2, User
 } from 'lucide-react';
 
 const StudentDashboard = () => {

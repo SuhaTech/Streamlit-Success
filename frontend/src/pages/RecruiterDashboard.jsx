@@ -4,7 +4,7 @@ import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { validateProfilePayload } from '../utils/profileValidation';
 import {
-  Briefcase, Users, Plus, Clock,
+  Briefcase, Users, Plus, Clock, Search,
   MapPin, CheckCircle2, Star, Building2, ArrowRight, LayoutDashboard, Send, Trash2, CalendarDays, Save, Globe,
 } from 'lucide-react';
 
@@ -25,6 +25,8 @@ const RecruiterDashboard = () => {
   const [selectedJob, setSelectedJob] = useState(null);
   const [applicants, setApplicants] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showPostForm, setShowPostForm] = useState(false);
   const [showInterviewModal, setShowInterviewModal] = useState(false);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [scheduledInterviews, setScheduledInterviews] = useState([]);
