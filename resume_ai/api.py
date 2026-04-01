@@ -285,6 +285,7 @@ async def parse_resume_file(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("AI_PORT", 8000))
+    # Render requires web services to bind to PORT.
+    port = int(os.environ.get("PORT", os.environ.get("AI_PORT", 8000)))
     uvicorn.run(app, host="0.0.0.0", port=port)
 
