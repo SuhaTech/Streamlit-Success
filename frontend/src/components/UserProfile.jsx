@@ -1,5 +1,5 @@
 import React from 'react';
-import { Phone, Mail, Linkedin, GraduationCap, Zap, Settings, User } from 'lucide-react';
+import { Phone, Mail, Linkedin, GraduationCap, Zap, Settings } from 'lucide-react';
 
 const UserProfile = ({ profile, status, setShowModal }) => {
   return (

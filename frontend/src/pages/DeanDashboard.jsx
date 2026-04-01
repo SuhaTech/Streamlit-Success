@@ -69,6 +69,7 @@ const DeanDashboard = () => {
     fetchSharedReports();
     fetchDeanAnalytics();
     fetchMyProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchMyProfile = async () => {

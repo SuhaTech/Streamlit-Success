@@ -7,10 +7,9 @@ import UserProfile from '../components/UserProfile';
 
 import { useAuth } from '../context/AuthContext';
 import { 
-  LogOut, Edit, Github, Linkedin, Plus, Upload, X, 
-  Mail, Phone, ShieldCheck, Search, Briefcase, Clock, FileText, CheckCircle2, User, GraduationCap,
-  Calendar, BookOpen, Star, Filter, Download, ArrowRight, LayoutDashboard, Send,Camera
-,Award,FileCheck,Zap,Settings, Trash2,} from 'lucide-react';
+  Github, Linkedin, Upload, X, 
+  FileText, Briefcase, Filter, Download, ArrowRight, Send, Camera, Award, FileCheck, Zap, Trash2
+} from 'lucide-react';
 
 const StudentDashboard = () => {
   const { user, logout } = useAuth();

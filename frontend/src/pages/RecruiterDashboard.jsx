@@ -4,9 +4,8 @@ import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
 import { validateProfilePayload } from '../utils/profileValidation';
 import {
-  Briefcase, Users, Plus, X, Search, Filter, Eye, ChevronDown,
-  MapPin, Clock, DollarSign, CheckCircle2, XCircle, Mail, FileText,
-  Star, Building2, ArrowRight, LayoutDashboard, Send, Edit, Trash2, CalendarDays, Save, Globe,
+  Briefcase, Users, Plus, Clock,
+  MapPin, CheckCircle2, Star, Building2, ArrowRight, LayoutDashboard, Send, Trash2, CalendarDays, Save, Globe,
 } from 'lucide-react';
 
 const STATUS_COLORS = {
@@ -20,13 +19,11 @@ const STATUS_COLORS = {
 };
 
 const RecruiterDashboard = () => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [jobs, setJobs] = useState([]);
   const [selectedJob, setSelectedJob] = useState(null);
   const [applicants, setApplicants] = useState([]);
-  const [showPostForm, setShowPostForm] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showInterviewModal, setShowInterviewModal] = useState(false);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
