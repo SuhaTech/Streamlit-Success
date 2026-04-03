@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 const StudentDashboard = () => {
+  const RECOMMENDED_JOBS_TIMEOUT_MS = Number(process.env.REACT_APP_RECOMMENDED_JOBS_TIMEOUT_MS || 30000);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const aiRetryTimerRef = useRef(null);
@@ -293,7 +294,7 @@ const StudentDashboard = () => {
         aiRetryTimerRef.current = null;
       }
 
-      const res = await axios.get('/api/jobs/recommended', { timeout: 8000 });
+      const res = await axios.get('/api/jobs/recommended', { timeout: RECOMMENDED_JOBS_TIMEOUT_MS });
       const mapped = sortJobs(mapJobs(res.data.jobs || []));
 
       setJobs(mapped);
@@ -317,6 +318,14 @@ const StudentDashboard = () => {
       }
     } catch (err) {
       console.error('Failed to load recommended jobs', err);
+      const statusCode = err?.response?.status;
+      const errorCode = String(err?.code || '');
+      const message = String(err?.message || '');
+      const isTransientError =
+        statusCode >= 500 ||
+        ['ECONNABORTED', 'ECONNRESET', 'ETIMEDOUT', 'ERR_NETWORK'].includes(errorCode) ||
+        /(timeout|timed out|network error|failed to fetch|502|503|504)/i.test(message);
+
       try {
         const fallbackRes = await axios.get('/api/jobs', { timeout: 8000 });
         const fallbackJobs = sortJobs(mapJobs(fallbackRes.data.jobs || []));
@@ -324,7 +333,7 @@ const StudentDashboard = () => {
       } catch (fallbackErr) {
         console.error('Failed to load fallback jobs', fallbackErr);
       }
-      if (retryAttempt < 3) {
+      if (isTransientError && retryAttempt < 3) {
         const delayMs = 4000 * (retryAttempt + 1);
         aiRetryTimerRef.current = setTimeout(() => {
           fetchJobs(retryAttempt + 1);

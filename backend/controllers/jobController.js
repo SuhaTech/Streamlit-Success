@@ -4,7 +4,11 @@ const Application = require("../models/Application");
 const User = require("../models/User");
 const { getExpiryVisibilityFilter } = require('../services/jobLifecycleService');
 
-const AI_TIMEOUT_MS = Math.max(Number(process.env.AI_TIMEOUT_MS || 45000), 10000);
+const AI_TIMEOUT_MS = (() => {
+  const configured = Number(process.env.AI_TIMEOUT_MS || 12000);
+  if (Number.isNaN(configured)) return 12000;
+  return Math.min(Math.max(configured, 5000), 20000);
+})();
 const DEFAULT_AI_SERVICE_URL = 'https://streamlit-success-ai.onrender.com';
 
 const buildSenderMeta = (req) => ({
@@ -432,6 +436,12 @@ exports.getMyJobs = async (req, res) => {
 // GET /api/jobs/recommended — student personalized jobs
 exports.getRecommendedJobs = async (req, res) => {
   try {
+    const requestStartedAt = Date.now();
+    const AI_TOTAL_BUDGET_MS = Math.max(Number(process.env.AI_RECOMMENDATION_BUDGET_MS || 20000), 8000);
+    const getRemainingBudget = () => AI_TOTAL_BUDGET_MS - (Date.now() - requestStartedAt);
+    const hasBudget = (minimumMs = 2500) => getRemainingBudget() >= minimumMs;
+    const getStepTimeout = () => Math.max(2500, Math.min(AI_TIMEOUT_MS, getRemainingBudget()));
+
     // 1. Fetch available jobs
     const jobs = await Job.find(buildStudentVisibleJobFilter(new Date()))
       .populate('postedBy', 'name companyName')
@@ -464,29 +474,33 @@ exports.getRecommendedJobs = async (req, res) => {
       aiMeta.resumeSource = 'resumeText';
     } else if (user.resumeUrl) {
       // Try rebuilding missing resumeText from already uploaded resume URL.
-      try {
-        const axios = require('axios');
-        const fastApiUrl = process.env.AI_SERVICE_URL || DEFAULT_AI_SERVICE_URL;
-        const parseResponse = await axios.post(
-          `${fastApiUrl}/parse-resume-url`,
-          { resume_url: user.resumeUrl },
-          { timeout: AI_TIMEOUT_MS }
-        );
+      if (!hasBudget(3000)) {
+        aiMeta.warnings.push('Skipping resume URL parsing due to response-time budget.');
+      } else {
+        try {
+          const axios = require('axios');
+          const fastApiUrl = process.env.AI_SERVICE_URL || DEFAULT_AI_SERVICE_URL;
+          const parseResponse = await axios.post(
+            `${fastApiUrl}/parse-resume-url`,
+            { resume_url: user.resumeUrl },
+            { timeout: getStepTimeout() }
+          );
 
-        const parsedFields = parseResponse.data?.fields || {};
-        const parsedText = String(parsedFields.resumeText || '').trim();
+          const parsedFields = parseResponse.data?.fields || {};
+          const parsedText = String(parsedFields.resumeText || '').trim();
 
-        if (parsedText.length >= 20) {
-          resumeText = parsedText;
-          aiMeta.resumeSource = 'resumeUrlParsed';
+          if (parsedText.length >= 20) {
+            resumeText = parsedText;
+            aiMeta.resumeSource = 'resumeUrlParsed';
 
-          // Persist only raw resume text for AI usage; keep profile fields manual/user-controlled.
-          await User.findByIdAndUpdate(user._id, { resumeText: parsedText }, { new: false });
-        } else {
-          aiMeta.warnings.push('Resume URL parse returned insufficient text, using profile fallback.');
+            // Persist only raw resume text for AI usage; keep profile fields manual/user-controlled.
+            await User.findByIdAndUpdate(user._id, { resumeText: parsedText }, { new: false });
+          } else {
+            aiMeta.warnings.push('Resume URL parse returned insufficient text, using profile fallback.');
+          }
+        } catch (parseErr) {
+          aiMeta.warnings.push(`Resume re-parse failed: ${getAxiosErrorMessage(parseErr)}`);
         }
-      } catch (parseErr) {
-        aiMeta.warnings.push(`Resume re-parse failed: ${getAxiosErrorMessage(parseErr)}`);
       }
     }
 
@@ -519,55 +533,68 @@ exports.getRecommendedJobs = async (req, res) => {
     const fastApiUrl = process.env.AI_SERVICE_URL || DEFAULT_AI_SERVICE_URL;
     let analysis = null;
 
-    try {
-      const analysisResponse = await axios.post(
-        `${fastApiUrl}/analyze`,
-        { resume_text: resumeText },
-        { timeout: AI_TIMEOUT_MS }
-      );
-      analysis = analysisResponse.data || null;
-      aiMeta.serviceStatus.analysis = 'ok';
-    } catch (analysisError) {
+    if (hasBudget(3000)) {
+      try {
+        const analysisResponse = await axios.post(
+          `${fastApiUrl}/analyze`,
+          { resume_text: resumeText },
+          { timeout: getStepTimeout() }
+        );
+        analysis = analysisResponse.data || null;
+        aiMeta.serviceStatus.analysis = 'ok';
+      } catch (analysisError) {
+        aiMeta.serviceStatus.analysis = 'failed';
+        aiMeta.warnings.push(`Profile analysis unavailable: ${analysisError.message}`);
+      }
+    } else {
       aiMeta.serviceStatus.analysis = 'failed';
-      aiMeta.warnings.push(`Profile analysis unavailable: ${analysisError.message}`);
+      aiMeta.warnings.push('Skipping profile analysis due to response-time budget.');
     }
     
     let rankingError = null;
     let rankedJobs = [];
 
     // Preferred: FastAPI recommendation endpoint
-    try {
-      const aiResponse = await axios.post(`${fastApiUrl}/recommend`, {
-        resume_text: resumeText,
-        jobs: jobsPayload,
-        profile_completeness: aiMeta.profileCompleteness,
-      }, { timeout: AI_TIMEOUT_MS });
+    if (hasBudget(3000)) {
+      try {
+        const aiResponse = await axios.post(`${fastApiUrl}/recommend`, {
+          resume_text: resumeText,
+          jobs: jobsPayload,
+          profile_completeness: aiMeta.profileCompleteness,
+        }, { timeout: getStepTimeout() });
 
-      rankedJobs = mapRankingsToJobs(jobs, aiResponse.data.rankings || []);
-      if (rankedJobs.length > 0) {
-        aiMeta.serviceStatus.recommendation = 'ok';
-        return res.json({ jobs: rankedJobs, ai: { analysis, meta: aiMeta } });
+        rankedJobs = mapRankingsToJobs(jobs, aiResponse.data.rankings || []);
+        if (rankedJobs.length > 0) {
+          aiMeta.serviceStatus.recommendation = 'ok';
+          return res.json({ jobs: rankedJobs, ai: { analysis, meta: aiMeta } });
+        }
+      } catch (fastApiRecommendError) {
+        rankingError = fastApiRecommendError;
       }
-    } catch (fastApiRecommendError) {
-      rankingError = fastApiRecommendError;
+    } else {
+      aiMeta.warnings.push('Skipping AI recommendation due to response-time budget.');
     }
 
     // Secondary: legacy Flask endpoint
-    try {
-      const aiResponse = await axios.post(`${flaskUrl}/recommend-jobs`, {
-        resume_text: resumeText,
-        jobs: jobsPayload,
-        profile_completeness: aiMeta.profileCompleteness,
-      }, { timeout: AI_TIMEOUT_MS });
+    if (hasBudget(2500)) {
+      try {
+        const aiResponse = await axios.post(`${flaskUrl}/recommend-jobs`, {
+          resume_text: resumeText,
+          jobs: jobsPayload,
+          profile_completeness: aiMeta.profileCompleteness,
+        }, { timeout: getStepTimeout() });
 
-      rankedJobs = mapRankingsToJobs(jobs, aiResponse.data.rankings || []);
-      if (rankedJobs.length > 0) {
-        aiMeta.serviceStatus.recommendation = 'ok';
-        aiMeta.warnings.push('Using legacy ranking service fallback.');
-        return res.json({ jobs: rankedJobs, ai: { analysis, meta: aiMeta } });
+        rankedJobs = mapRankingsToJobs(jobs, aiResponse.data.rankings || []);
+        if (rankedJobs.length > 0) {
+          aiMeta.serviceStatus.recommendation = 'ok';
+          aiMeta.warnings.push('Using legacy ranking service fallback.');
+          return res.json({ jobs: rankedJobs, ai: { analysis, meta: aiMeta } });
+        }
+      } catch (flaskRecommendError) {
+        rankingError = rankingError || flaskRecommendError;
       }
-    } catch (flaskRecommendError) {
-      rankingError = rankingError || flaskRecommendError;
+    } else {
+      aiMeta.warnings.push('Skipping legacy ranking fallback due to response-time budget.');
     }
 
     // Final: deterministic local ranking
