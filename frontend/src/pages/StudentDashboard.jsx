@@ -266,32 +266,32 @@ const StudentDashboard = () => {
   }, []);
 
   const fetchJobs = async (retryAttempt = 0) => {
+    const mapJobs = (items) => (items || []).map(j => ({
+      id: j._id,
+      company: j.company,
+      role: j.title,
+      loc: j.location || '',
+      pay: j.stipend || '',
+      logo: (j.company || '?')[0].toUpperCase(),
+      color: 'bg-slate-700',
+      matchData: j.matchData || null,
+      raw: j,
+    }));
+
+    const sortJobs = (items) => items.sort((a, b) => {
+      const aScore = a.matchData?.overallScore;
+      const bScore = b.matchData?.overallScore;
+      if (typeof aScore === 'number' && typeof bScore === 'number') return bScore - aScore;
+      if (typeof bScore === 'number') return 1;
+      if (typeof aScore === 'number') return -1;
+      return 0;
+    });
+
     try {
       if (aiRetryTimerRef.current) {
         clearTimeout(aiRetryTimerRef.current);
         aiRetryTimerRef.current = null;
       }
-
-      const mapJobs = (items) => (items || []).map(j => ({
-        id: j._id,
-        company: j.company,
-        role: j.title,
-        loc: j.location || '',
-        pay: j.stipend || '',
-        logo: (j.company || '?')[0].toUpperCase(),
-        color: 'bg-slate-700',
-        matchData: j.matchData || null,
-        raw: j,
-      }));
-
-      const sortJobs = (items) => items.sort((a, b) => {
-        const aScore = a.matchData?.overallScore;
-        const bScore = b.matchData?.overallScore;
-        if (typeof aScore === 'number' && typeof bScore === 'number') return bScore - aScore;
-        if (typeof bScore === 'number') return 1;
-        if (typeof aScore === 'number') return -1;
-        return 0;
-      });
 
       const res = await axios.get('/api/jobs/recommended', { timeout: 8000 });
       const mapped = sortJobs(mapJobs(res.data.jobs || []));
