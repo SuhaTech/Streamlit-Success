@@ -7,16 +7,24 @@ const DEFAULT_AI_SERVICE_URL = "https://streamlit-success-ai.onrender.com";
 const normalizeAiUrl = (url) => String(url || "").trim().replace(/\/$/, "");
 const isLocalAiUrl = (url) => /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?$/i.test(String(url || "").trim());
 const getAiBases = () => {
+  const isProduction = String(process.env.NODE_ENV || "").toLowerCase() === "production";
   const primary = normalizeAiUrl(process.env.AI_SERVICE_URL || "");
   const list = String(process.env.AI_SERVICE_URLS || "")
     .split(",")
     .map(normalizeAiUrl)
     .filter(Boolean);
-  const unique = [...new Set([primary, ...list, normalizeAiUrl(DEFAULT_AI_SERVICE_URL)].filter(Boolean))];
+  const candidates = [primary, ...list, normalizeAiUrl(DEFAULT_AI_SERVICE_URL)].filter(Boolean);
+  const filtered = isProduction ? candidates.filter((url) => !isLocalAiUrl(url)) : candidates;
+  const unique = [...new Set((filtered.length ? filtered : candidates).filter(Boolean))];
   unique.sort((a, b) => Number(isLocalAiUrl(a)) - Number(isLocalAiUrl(b)));
   return unique;
 };
-const AI_HEALTH_TIMEOUT_MS = Math.min(Number(process.env.AI_HEALTH_TIMEOUT_MS || 20000), 5000);
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const AI_HEALTH_TIMEOUT_MS = clamp(
+  Number(process.env.AI_HEALTH_TIMEOUT_MS || 15000),
+  3000,
+  60000
+);
 
 const postToAiWithFallback = async (path, payload, timeoutMs) => {
   let lastErr = null;
