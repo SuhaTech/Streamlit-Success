@@ -2,6 +2,7 @@ const Job = require("../models/Job");
 const Notification = require("../models/Notification");
 const Application = require("../models/Application");
 const User = require("../models/User");
+const axios = require('axios');
 const { getExpiryVisibilityFilter } = require('../services/jobLifecycleService');
 
 const AI_TIMEOUT_MS = (() => {
@@ -10,6 +11,40 @@ const AI_TIMEOUT_MS = (() => {
   return Math.min(Math.max(configured, 5000), 20000);
 })();
 const DEFAULT_AI_SERVICE_URL = 'https://streamlit-success-ai.onrender.com';
+
+const isLocalAiUrl = (url) => /^(https?:\/\/)?(localhost|127\.0\.0\.1)(:\d+)?$/i.test(String(url || '').trim());
+
+const normalizeAiUrl = (url) => String(url || '').trim().replace(/\/$/, '');
+
+const getAiServiceCandidates = () => {
+  const configuredPrimary = normalizeAiUrl(process.env.AI_SERVICE_URL || '');
+  const configuredList = String(process.env.AI_SERVICE_URLS || '')
+    .split(',')
+    .map(normalizeAiUrl)
+    .filter(Boolean);
+
+  const combined = [configuredPrimary, ...configuredList, normalizeAiUrl(DEFAULT_AI_SERVICE_URL)].filter(Boolean);
+  const unique = [...new Set(combined)];
+
+  // Prefer reachable remote URLs over localhost on deployed environments.
+  unique.sort((a, b) => Number(isLocalAiUrl(a)) - Number(isLocalAiUrl(b)));
+  return unique;
+};
+
+const postToAiWithFallback = async ({ path, payload, timeoutMs, candidates }) => {
+  let lastError = null;
+
+  for (const base of candidates || []) {
+    try {
+      const response = await axios.post(`${base}${path}`, payload, { timeout: timeoutMs });
+      return { data: response.data, base };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error('AI service unavailable');
+};
 
 const buildSenderMeta = (req) => ({
   sender: {
@@ -441,6 +476,7 @@ exports.getRecommendedJobs = async (req, res) => {
     const getRemainingBudget = () => AI_TOTAL_BUDGET_MS - (Date.now() - requestStartedAt);
     const hasBudget = (minimumMs = 2500) => getRemainingBudget() >= minimumMs;
     const getStepTimeout = () => Math.max(2500, Math.min(AI_TIMEOUT_MS, getRemainingBudget()));
+    const aiServiceCandidates = getAiServiceCandidates();
 
     // 1. Fetch available jobs
     const jobs = await Job.find(buildStudentVisibleJobFilter(new Date()))
@@ -478,13 +514,12 @@ exports.getRecommendedJobs = async (req, res) => {
         aiMeta.warnings.push('Skipping resume URL parsing due to response-time budget.');
       } else {
         try {
-          const axios = require('axios');
-          const fastApiUrl = process.env.AI_SERVICE_URL || DEFAULT_AI_SERVICE_URL;
-          const parseResponse = await axios.post(
-            `${fastApiUrl}/parse-resume-url`,
-            { resume_url: user.resumeUrl },
-            { timeout: getStepTimeout() }
-          );
+          const parseResponse = await postToAiWithFallback({
+            path: '/parse-resume-url',
+            payload: { resume_url: user.resumeUrl },
+            timeoutMs: getStepTimeout(),
+            candidates: aiServiceCandidates,
+          });
 
           const parsedFields = parseResponse.data?.fields || {};
           const parsedText = String(parsedFields.resumeText || '').trim();
@@ -528,18 +563,17 @@ exports.getRecommendedJobs = async (req, res) => {
     }));
 
     // 3. Call Python AI services (analysis + recommendation)
-    const axios = require('axios');
     const flaskUrl = process.env.FLASK_API_URL || 'http://localhost:8001';
-    const fastApiUrl = process.env.AI_SERVICE_URL || DEFAULT_AI_SERVICE_URL;
     let analysis = null;
 
     if (hasBudget(3000)) {
       try {
-        const analysisResponse = await axios.post(
-          `${fastApiUrl}/analyze`,
-          { resume_text: resumeText },
-          { timeout: getStepTimeout() }
-        );
+        const analysisResponse = await postToAiWithFallback({
+          path: '/analyze',
+          payload: { resume_text: resumeText },
+          timeoutMs: getStepTimeout(),
+          candidates: aiServiceCandidates,
+        });
         analysis = analysisResponse.data || null;
         aiMeta.serviceStatus.analysis = 'ok';
       } catch (analysisError) {
@@ -557,11 +591,16 @@ exports.getRecommendedJobs = async (req, res) => {
     // Preferred: FastAPI recommendation endpoint
     if (hasBudget(3000)) {
       try {
-        const aiResponse = await axios.post(`${fastApiUrl}/recommend`, {
-          resume_text: resumeText,
-          jobs: jobsPayload,
-          profile_completeness: aiMeta.profileCompleteness,
-        }, { timeout: getStepTimeout() });
+        const aiResponse = await postToAiWithFallback({
+          path: '/recommend',
+          payload: {
+            resume_text: resumeText,
+            jobs: jobsPayload,
+            profile_completeness: aiMeta.profileCompleteness,
+          },
+          timeoutMs: getStepTimeout(),
+          candidates: aiServiceCandidates,
+        });
 
         rankedJobs = mapRankingsToJobs(jobs, aiResponse.data.rankings || []);
         if (rankedJobs.length > 0) {
