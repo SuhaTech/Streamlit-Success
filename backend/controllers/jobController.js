@@ -473,6 +473,7 @@ exports.getRecommendedJobs = async (req, res) => {
   try {
     const requestStartedAt = Date.now();
     const AI_TOTAL_BUDGET_MS = Math.max(Number(process.env.AI_RECOMMENDATION_BUDGET_MS || 20000), 8000);
+    const ENABLE_RECOMMENDATION_ANALYSIS = String(process.env.AI_RECOMMENDATION_INCLUDE_ANALYSIS || 'false').toLowerCase() === 'true';
     const getRemainingBudget = () => AI_TOTAL_BUDGET_MS - (Date.now() - requestStartedAt);
     const hasBudget = (minimumMs = 2500) => getRemainingBudget() >= minimumMs;
     const getStepTimeout = () => Math.max(2500, Math.min(AI_TIMEOUT_MS, getRemainingBudget()));
@@ -566,23 +567,27 @@ exports.getRecommendedJobs = async (req, res) => {
     const flaskUrl = process.env.FLASK_API_URL || 'http://localhost:8001';
     let analysis = null;
 
-    if (hasBudget(3000)) {
-      try {
-        const analysisResponse = await postToAiWithFallback({
-          path: '/analyze',
-          payload: { resume_text: resumeText },
-          timeoutMs: getStepTimeout(),
-          candidates: aiServiceCandidates,
-        });
-        analysis = analysisResponse.data || null;
-        aiMeta.serviceStatus.analysis = 'ok';
-      } catch (analysisError) {
+    if (ENABLE_RECOMMENDATION_ANALYSIS) {
+      if (hasBudget(3000)) {
+        try {
+          const analysisResponse = await postToAiWithFallback({
+            path: '/analyze',
+            payload: { resume_text: resumeText },
+            timeoutMs: getStepTimeout(),
+            candidates: aiServiceCandidates,
+          });
+          analysis = analysisResponse.data || null;
+          aiMeta.serviceStatus.analysis = 'ok';
+        } catch (analysisError) {
+          aiMeta.serviceStatus.analysis = 'failed';
+          aiMeta.warnings.push(`Profile analysis unavailable: ${analysisError.message}`);
+        }
+      } else {
         aiMeta.serviceStatus.analysis = 'failed';
-        aiMeta.warnings.push(`Profile analysis unavailable: ${analysisError.message}`);
+        aiMeta.warnings.push('Skipping profile analysis due to response-time budget.');
       }
     } else {
-      aiMeta.serviceStatus.analysis = 'failed';
-      aiMeta.warnings.push('Skipping profile analysis due to response-time budget.');
+      aiMeta.serviceStatus.analysis = 'skipped';
     }
     
     let rankingError = null;

@@ -987,6 +987,7 @@ const handleOpenDocRequest = (docType) => {
 const normalizeAiStatusLabel = (status, type) => {
   const val = String(status || '').toLowerCase();
   if (type === 'recommendation' && val === 'fallback') return 'backup mode';
+  if (type === 'analysis' && val === 'skipped') return 'not required';
   if (val === 'ok') return 'ok';
   if (val === 'failed') return 'unavailable';
   if (!val) return 'unknown';
