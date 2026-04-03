@@ -5,6 +5,7 @@ const protect = require("../middleware/authMiddleware");
 
 const DEFAULT_AI_SERVICE_URL = "https://streamlit-success-ai.onrender.com";
 const AI_BASE = process.env.AI_SERVICE_URL || DEFAULT_AI_SERVICE_URL;
+const AI_HEALTH_TIMEOUT_MS = Number(process.env.AI_HEALTH_TIMEOUT_MS || 20000);
 
 // POST /api/ai/analyze — proxy resume analysis to Python FastAPI
 router.post("/analyze", protect, async (req, res) => {
@@ -51,7 +52,7 @@ router.post("/skills", protect, async (req, res) => {
 // GET /api/ai/health — AI service health check
 router.get("/health", async (req, res) => {
   try {
-    const response = await axios.get(`${AI_BASE}/health`, { timeout: 5000 });
+    const response = await axios.get(`${AI_BASE}/health`, { timeout: AI_HEALTH_TIMEOUT_MS });
     res.json(response.data);
   } catch (err) {
     res.status(502).json({ status: "down", error: err.message });
