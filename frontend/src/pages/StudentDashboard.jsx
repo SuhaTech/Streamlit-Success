@@ -1302,6 +1302,9 @@ const visibleAiWarnings = (aiMeta?.warnings || []).filter((w) => {
               </div>
             </div>
           </div>
+          {/* ── Interview Calendar ─────────────────────────────── */}
+          <InterviewCalendar applications={myApplications} />
+
           {/* History */}
           <div className="bg-white rounded-[2.5rem] p-10 border border-slate-200 shadow-sm">
             <h3 className="text-2xl font-black italic uppercase tracking-tighter mb-8">Submission History</h3>
@@ -2182,4 +2185,206 @@ const visibleAiWarnings = (aiMeta?.warnings || []).filter((w) => {
   );
 };
 
-export default StudentDashboard;
+/* ═══════════════════════════════════════════════════════════════
+   InterviewCalendar  –  shows scheduled interviews on a calendar
+   Props: applications  (array from myApplications state)
+═══════════════════════════════════════════════════════════════ */
+const InterviewCalendar = ({ applications = [] }) => {
+  const today = new Date();
+  const [viewYear,  setViewYear]  = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth()); // 0-indexed
+  const [selected,  setSelected]  = useState(null); // { dateStr, interviews[] }
+
+  /* Build a lookup: "YYYY-MM-DD" → [app, app, …] */
+  const interviewMap = React.useMemo(() => {
+    const map = {};
+    applications.forEach(app => {
+      if (!app.interview?.date) return;
+      const raw = app.interview.date;
+      const d   = new Date(raw);
+      if (isNaN(d.getTime())) return;
+      const key = d.toISOString().slice(0, 10); // "YYYY-MM-DD"
+      if (!map[key]) map[key] = [];
+      map[key].push(app);
+    });
+    return map;
+  }, [applications]);
+
+  /* Calendar grid helpers */
+  const firstDay  = new Date(viewYear, viewMonth, 1).getDay();   // 0=Sun
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const todayStr  = today.toISOString().slice(0, 10);
+
+  const MONTHS = ['January','February','March','April','May','June',
+                  'July','August','September','October','November','December'];
+  const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
+    else setViewMonth(m => m - 1);
+    setSelected(null);
+  };
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
+    else setViewMonth(m => m + 1);
+    setSelected(null);
+  };
+
+  const handleDayClick = (dateStr) => {
+    const interviews = interviewMap[dateStr];
+    if (!interviews) return;
+    setSelected(prev => prev?.dateStr === dateStr ? null : { dateStr, interviews });
+  };
+
+  /* Scheduled interviews this month (for the summary row) */
+  const thisMonthInterviews = Object.entries(interviewMap).filter(([k]) => {
+    const [y, m] = k.split('-').map(Number);
+    return y === viewYear && m - 1 === viewMonth;
+  });
+
+  return (
+    <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="text-2xl font-black italic uppercase tracking-tighter">
+            📅 Interview Calendar
+          </h3>
+          <p className="text-xs text-slate-400 font-semibold uppercase tracking-widest mt-1">
+            {thisMonthInterviews.length === 0
+              ? 'No interviews scheduled this month'
+              : `${thisMonthInterviews.length} interview${thisMonthInterviews.length > 1 ? 's' : ''} this month`}
+          </p>
+        </div>
+        {/* Month navigation */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={prevMonth}
+            className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-black hover:text-white transition-all flex items-center justify-center font-black text-lg"
+          >‹</button>
+          <span className="text-sm font-black uppercase tracking-widest min-w-[120px] text-center">
+            {MONTHS[viewMonth]} {viewYear}
+          </span>
+          <button
+            onClick={nextMonth}
+            className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-black hover:text-white transition-all flex items-center justify-center font-black text-lg"
+          >›</button>
+        </div>
+      </div>
+
+      {/* Day-of-week headers */}
+      <div className="grid grid-cols-7 mb-2">
+        {DAYS.map(d => (
+          <div key={d} className="text-center text-[10px] font-black uppercase text-slate-400 py-1">
+            {d}
+          </div>
+        ))}
+      </div>
+
+      {/* Calendar grid */}
+      <div className="grid grid-cols-7 gap-1">
+        {/* Empty cells before month start */}
+        {Array.from({ length: firstDay }).map((_, i) => (
+          <div key={`empty-${i}`} />
+        ))}
+
+        {/* Day cells */}
+        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+          const mm     = String(viewMonth + 1).padStart(2, '0');
+          const dd     = String(day).padStart(2, '0');
+          const dateStr = `${viewYear}-${mm}-${dd}`;
+          const hasInterview = !!interviewMap[dateStr];
+          const isToday      = dateStr === todayStr;
+          const isSelected   = selected?.dateStr === dateStr;
+
+          return (
+            <button
+              key={day}
+              onClick={() => handleDayClick(dateStr)}
+              className={`
+                relative flex flex-col items-center justify-center aspect-square rounded-2xl text-sm font-black transition-all
+                ${isSelected   ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 scale-105' : ''}
+                ${!isSelected && isToday ? 'bg-amber-50 border-2 border-amber-400 text-amber-700' : ''}
+                ${!isSelected && hasInterview && !isToday ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100' : ''}
+                ${!isSelected && !hasInterview && !isToday ? 'text-slate-600 hover:bg-slate-50' : ''}
+              `}
+            >
+              {day}
+              {/* Interview dot indicator */}
+              {hasInterview && (
+                <span className={`absolute bottom-1 w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-indigo-500'}`} />
+              )}
+              {/* Today dot */}
+              {isToday && !hasInterview && (
+                <span className="absolute bottom-1 w-1.5 h-1.5 rounded-full bg-amber-500" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-5 mt-4 pt-4 border-t border-slate-100">
+        <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase">
+          <span className="w-3 h-3 rounded-full bg-indigo-500 inline-block" /> Interview
+        </span>
+        <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase">
+          <span className="w-3 h-3 rounded-full bg-amber-400 inline-block" /> Today
+        </span>
+      </div>
+
+      {/* Detail card on click */}
+      {selected && (
+        <div className="mt-5 space-y-3">
+          <p className="text-xs font-black uppercase text-slate-400 tracking-widest">
+            Interviews on {new Date(selected.dateStr + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+          </p>
+          {selected.interviews.map((app, idx) => (
+            <div
+              key={idx}
+              className="flex items-start gap-4 p-5 rounded-2xl bg-indigo-50 border border-indigo-100"
+            >
+              {/* Company avatar */}
+              <div className="w-11 h-11 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-black text-lg flex-shrink-0">
+                {(app.company || '?')[0].toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-black text-sm text-slate-900 uppercase truncate">{app.company}</p>
+                <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wide">{app.role}</p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {app.interview.time && (
+                    <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase">
+                      🕐 {app.interview.time}
+                    </span>
+                  )}
+                  {app.interview.mode && (
+                    <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase">
+                      {app.interview.mode === 'online' ? '💻 Online' : '🏢 Offline'}
+                    </span>
+                  )}
+                  {app.interview.location && (
+                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">
+                      📍 {app.interview.location}
+                    </span>
+                  )}
+                </div>
+                {app.interview.meetingLink && (
+                  <a
+                    href={app.interview.meetingLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 mt-2 text-[11px] font-black text-indigo-600 hover:underline"
+                  >
+                    🔗 Join Meeting Link
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default StudentDashboard;

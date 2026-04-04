@@ -272,23 +272,23 @@ const [interviewForm, setInterviewForm] = useState({
   }
 };
 const handleScheduleInterview = async () => {
+  if (!interviewForm.date || !interviewForm.time) {
+    alert('Please fill in Interview Date and Time.');
+    return;
+  }
   try {
-
-    const res = await axios.put(
+    await axios.put(
       `/api/applications/schedule-interview/${selectedJob._id}`,
       interviewForm
     );
-
-    alert("Interview scheduled successfully");
-
+    alert('Interview scheduled successfully! Students have been notified.');
     setShowInterviewModal(false);
+    setInterviewForm({ date: '', time: '', mode: 'online', meetingLink: '', location: '' });
     fetchApplicants(selectedJob._id);
     fetchScheduledInterviews();
-
   } catch (err) {
-
-    alert("Failed to schedule interview");
-
+    const msg = err.response?.data?.message || err.message || 'Failed to schedule interview';
+    alert(`Error: ${msg}`);
   }
 };
 
@@ -812,10 +812,14 @@ const handleCancelInterview = async (applicationId) => {
   </div>
 
   <button
-    onClick={() => setShowInterviewModal(true)}
+    onClick={() => {
+      if (!selectedJob) { alert('Please select a job first.'); return; }
+      setInterviewForm({ date: '', time: '', mode: 'online', meetingLink: '', location: '' });
+      setShowInterviewModal(true);
+    }}
     className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-sm font-medium shadow hover:bg-indigo-700 transition"
   >
-    Schedule Interview
+    📅 Schedule Interview
   </button>
 </div>              {!selectedJob ? (
                 <div className="bg-white rounded-xl shadow-sm p-6">
@@ -893,19 +897,26 @@ const handleCancelInterview = async (applicationId) => {
         {showInterviewModal && (
   <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
     <div className="bg-white rounded-3xl p-8 w-full max-w-lg shadow-2xl border border-gray-100">
-      <h3 className="text-lg font-semibold mb-4">Schedule Interview</h3>
+      <h3 className="text-lg font-semibold mb-1">📅 Schedule Interview</h3>
+      <p className="text-xs text-gray-500 mb-4">
+        Scheduling for: <span className="font-medium text-indigo-700">{selectedJob?.title}</span>
+      </p>
+
+      <div className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800">
+        ⚠️ Only applicants with status <strong>"interview"</strong> will be scheduled.
+        Make sure you have moved applicants to <em>interview</em> status first.
+      </div>
 
       <div className="space-y-3">
-
         <Input
-          label="Interview Date"
+          label="Interview Date *"
           type="date"
           value={interviewForm.date}
           onChange={(v)=>setInterviewForm({...interviewForm,date:v})}
         />
 
         <Input
-          label="Interview Time"
+          label="Interview Time *"
           type="time"
           value={interviewForm.time}
           onChange={(v)=>setInterviewForm({...interviewForm,time:v})}
@@ -916,8 +927,8 @@ const handleCancelInterview = async (applicationId) => {
           value={interviewForm.mode}
           onChange={(v)=>setInterviewForm({...interviewForm,mode:v})}
           options={[
-            {v:'online',l:'Online'},
-            {v:'offline',l:'Offline'}
+            {v:'online',l:'Online (Video Call)'},
+            {v:'offline',l:'Offline (In-Person)'}
           ]}
         />
 
@@ -925,6 +936,7 @@ const handleCancelInterview = async (applicationId) => {
           <Input
             label="Meeting Link"
             value={interviewForm.meetingLink}
+            placeholder="https://meet.google.com/..."
             onChange={(v)=>setInterviewForm({...interviewForm,meetingLink:v})}
           />
         )}
@@ -933,25 +945,24 @@ const handleCancelInterview = async (applicationId) => {
           <Input
             label="Interview Location"
             value={interviewForm.location}
+            placeholder="e.g. Office Address / Room No."
             onChange={(v)=>setInterviewForm({...interviewForm,location:v})}
           />
         )}
-
       </div>
 
       <div className="flex justify-end gap-3 mt-6">
         <button
           onClick={()=>setShowInterviewModal(false)}
-          className="px-4 py-2 border rounded-lg text-sm"
+          className="px-4 py-2 border rounded-lg text-sm text-gray-600 hover:bg-gray-50"
         >
           Cancel
         </button>
-
         <button
           onClick={handleScheduleInterview}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm"
+          className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition"
         >
-          Schedule Interview
+          Send Schedule & Notify Students
         </button>
       </div>
     </div>
