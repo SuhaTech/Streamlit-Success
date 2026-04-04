@@ -831,65 +831,128 @@ const handleCancelInterview = async (applicationId) => {
                   ))}
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {applicants.length === 0 && (
-                    <div className="bg-white rounded-xl shadow-sm p-8 text-center">
-                      <Users size={40} className="mx-auto mb-3 text-gray-300" />
-                      <p className="text-gray-500">No applicants yet</p>
-                    </div>
-                  )}
-                  {applicants.map(app => (
-                    <div key={app._id} className="bg-white rounded-2xl shadow-md hover:shadow-lg transition p-6 border border-gray-100">
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h4 className="font-semibold text-gray-800">{app.studentId?.name || 'Student'}</h4>
-                          <p className="text-sm text-gray-500">{app.studentId?.email}</p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          {app.matchScore > 0 && (
-                            <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium flex items-center gap-1">
-                              <Star size={12} /> {app.matchScore}% match
-                            </span>
-                          )}
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[app.status] || 'bg-gray-100 text-gray-500'}`}>
-                            {app.status.replace('_', ' ')}
-                          </span>
-                        </div>
-                      </div>
-                      {app.coverNote && (
-                        <p className="text-sm text-gray-600 mb-3 bg-gray-50 p-3 rounded-lg">{app.coverNote}</p>
-                      )}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {['under_review','selected','interview','offered','rejected'].map(s => (
-  <button
-    key={s}
-    onClick={() => handleStatusUpdate(app._id, s)}
-    disabled={app.status?.toLowerCase() === s}
-    className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
-      app.status?.toLowerCase() === s
-        ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-        : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-    }`}
-  >
-    
-    {s.replace('_', ' ')}
-  </button>
-))}
+                (() => {
+                  const activeApps = applicants.filter(app => !['offered', 'offer_accepted', 'offer_declined', 'rejected'].includes(app.status?.toLowerCase()));
+                  const selectedApps = applicants.filter(app => ['offered', 'offer_accepted', 'offer_declined'].includes(app.status?.toLowerCase()));
 
-                        {(app.status === 'interview_scheduled' || app.interviewScheduled || app.interview?.date) && (
-                          <button
-                            onClick={() => openRescheduleModal(app)}
-                            className="px-3 py-1.5 rounded-md text-xs font-medium transition bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                          >
-                            Reschedule Interview
-                          </button>
+                  return (
+                    <div className="space-y-10">
+                      {/* --- ACTIVE APPLICANTS --- */}
+                      <div>
+                        {activeApps.length === 0 ? (
+                          <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-100">
+                            <Users size={40} className="mx-auto mb-3 text-gray-300" />
+                            <p className="text-gray-500">No active applicants</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {activeApps.map(app => (
+                              <div key={app._id} className="bg-white rounded-2xl shadow-md hover:shadow-lg transition p-6 border border-gray-100">
+                                <div className="flex items-center justify-between mb-3">
+                                  <div>
+                                    <h4 className="font-semibold text-gray-800">{app.studentId?.name || 'Student'}</h4>
+                                    <p className="text-sm text-gray-500">{app.studentId?.email}</p>
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    {app.matchScore > 0 && (
+                                      <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs font-medium flex items-center gap-1">
+                                        <Star size={12} /> {app.matchScore}% match
+                                      </span>
+                                    )}
+                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${STATUS_COLORS[app.status] || 'bg-gray-100 text-gray-500'}`}>
+                                      {app.status.replace('_', ' ')}
+                                    </span>
+                                  </div>
+                                </div>
+                                {app.coverNote && (
+                                  <p className="text-sm text-gray-600 mb-3 bg-gray-50 p-3 rounded-lg">{app.coverNote}</p>
+                                )}
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-4">
+                                  {/* Pipeline Stages */}
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {['under_review', 'shortlisted', 'interview'].map(s => (
+                                      <button
+                                        key={s}
+                                        onClick={() => handleStatusUpdate(app._id, s)}
+                                        disabled={app.status?.toLowerCase() === s}
+                                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
+                                          app.status?.toLowerCase() === s
+                                            ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                            : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                                        }`}
+                                      >
+                                        {s.replace('_', ' ')}
+                                      </button>
+                                    ))}
+                                    {(app.status === 'interview_scheduled' || app.interviewScheduled || app.interview?.date) && (
+                                      <button
+                                        onClick={() => openRescheduleModal(app)}
+                                        className="px-3 py-1.5 rounded-md text-xs font-medium transition bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                      >
+                                        Reschedule Interview
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* Final Actions */}
+                                  <div className="flex items-center gap-2 sm:border-l sm:border-gray-100 sm:pl-4">
+                                    <button
+                                      onClick={() => {
+                                        if (window.confirm(`Are you sure you want to offer this role to ${app.studentId?.name || 'this student'}?`)) {
+                                          handleStatusUpdate(app._id, 'offered');
+                                        }
+                                      }}
+                                      className="px-5 py-1.5 bg-green-500 text-white rounded-md text-xs font-bold hover:bg-green-600 transition shadow-sm"
+                                    >
+                                      Accept (Offer)
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        if (window.confirm("Are you sure you want to reject this applicant?")) {
+                                          handleStatusUpdate(app._id, 'rejected');
+                                        }
+                                      }}
+                                      className="px-5 py-1.5 bg-red-500 text-white rounded-md text-xs font-bold hover:bg-red-600 transition shadow-sm"
+                                    >
+                                      Reject
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         )}
-
-
                       </div>
+
+                      {/* --- SELECTED EMPLOYEES --- */}
+                      {selectedApps.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-2 mb-4">
+                            <span className="p-2 bg-green-100 text-green-700 rounded-lg"><Star size={18} className="fill-current" /></span>
+                            <h3 className="text-xl font-bold text-gray-800">Selected Employees ({selectedApps.length})</h3>
+                          </div>
+                          <div className="space-y-3">
+                            {selectedApps.map(app => (
+                              <div key={app._id} className="bg-white rounded-2xl shadow-sm hover:shadow-md transition p-5 border-l-4 border-green-500">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <h4 className="font-bold text-gray-800 text-lg">{app.studentId?.name || 'Student'}</h4>
+                                    <p className="text-sm text-gray-500">{app.studentId?.email}</p>
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="inline-block px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-bold uppercase tracking-wider mb-2">
+                                      {app.status === 'offer_accepted' ? '✅ Offer Accepted' : '🎁 Offered'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  ))}
-                </div>
+                  );
+                })()
               )}
             </div>
           )}
