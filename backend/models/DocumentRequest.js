@@ -16,6 +16,7 @@ const docRequestSchema = new mongoose.Schema({
   reason:       String,
   requestDetails: {
     orgName: String,
+    orgAddress: String,
     role: String,
     mode: String,
     startDate: String,

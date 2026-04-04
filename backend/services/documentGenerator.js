@@ -82,6 +82,7 @@ const fetchNocData = async (studentId, jobId, requestDetails = {}, reason = '') 
     if (!jobData && normalizedRequest?.orgName) {
       jobData = {
         company: normalizedRequest.orgName,
+        address: normalizedRequest.orgAddress || 'Address not specified',
         title: normalizedRequest.role || 'Internship',
         location: normalizedRequest.mode || normalizedRequest.startDate || 'Location not specified',
         stipend: normalizedRequest.duration || normalizedRequest.applyingFor || 'As per company policy',
@@ -134,6 +135,7 @@ const formatDataForTemplate = (student, jobData) => {
 
     // Job/Company details
     companyName: jobData.company || 'Company Name',
+    companyAddress: jobData.address || jobData.location || 'Address not specified',
     jobTitle: jobData.title || 'Position',
     jobLocation: jobData.location || 'Location',
     stipend: jobData.stipend || 'Negotiable',
@@ -369,7 +371,7 @@ exports.validateNocRequirements = async (studentId, jobId, requestDetails = {}, 
     } else {
       const companyName = job?.company || normalizedRequest?.orgName;
       const jobTitle = job?.title || normalizedRequest?.role;
-      const location = job?.location || normalizedRequest?.mode || normalizedRequest?.startDate || 'N/A';
+      const location = job?.location || normalizedRequest?.orgAddress || normalizedRequest?.mode || normalizedRequest?.startDate || 'N/A';
       console.log('✅ [Validate] NOC source found:', companyName, jobTitle, location);
       if (!companyName) {
         errors.push('Company name missing');
@@ -424,6 +426,7 @@ exports.getNocPreview = () => {
     academicYear: '2021-2025',
     cgpa: '8.5',
     companyName: 'Tech Company Inc.',
+    companyAddress: 'Electronic City, Bengaluru, Karnataka',
     jobTitle: 'Software Engineer',
     jobLocation: 'Bangalore, India',
     stipend: '₹ 6,00,000 LPA',

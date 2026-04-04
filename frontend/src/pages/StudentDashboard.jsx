@@ -23,6 +23,7 @@ const StudentDashboard = () => {
   const [showAiDrawer, setShowAiDrawer] = useState(false);
   const [docFormData, setDocFormData] = useState({
   orgName: '',
+  orgAddress: '',
   role: '',
   mode: '',
   startDate: '',
@@ -719,7 +720,14 @@ const StudentDashboard = () => {
   };
   //NOC
   const handleSubmit = async () => {
-  const { orgName, role, mode, startDate, duration, applyingFor, targetUni, faculty, achievements, bonafidePurpose } = docFormData;
+  const { orgName, orgAddress, role, mode, startDate, duration, applyingFor, targetUni, faculty, achievements, bonafidePurpose } = docFormData;
+
+  if (activeDocType === 'NOC Request') {
+    if (!orgName || !orgAddress || !role || !mode) {
+      alert('⚠️ Please fill all required fields for NOC request.');
+      return;
+    }
+  }
 
   // 1. LOR Validation
   if (activeDocType === 'LOR Request') {
@@ -773,6 +781,7 @@ const StudentDashboard = () => {
         docType = 'noc';
         reason = `NOC for ${docFormData.orgName || 'Organization'} - ${docFormData.role || 'Intern'} role`;
         requestDetails.orgName = docFormData.orgName;
+        requestDetails.orgAddress = docFormData.orgAddress;
         requestDetails.role = docFormData.role;
         requestDetails.mode = docFormData.mode;
         requestDetails.startDate = docFormData.startDate;
@@ -810,7 +819,7 @@ const StudentDashboard = () => {
       
       // Reset form
       setDocFormData({
-        orgName: '', role: '', mode: '', startDate: '', duration: '',
+        orgName: '', orgAddress: '', role: '', mode: '', startDate: '', duration: '',
         applyingFor: '', targetUni: '', faculty: '', achievements: '',
         bonafidePurpose: ''
       });
@@ -1707,6 +1716,7 @@ const visibleAiWarnings = (aiMeta?.warnings || []).filter((w) => {
                 <input type="text" placeholder="Organization *" className="p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs border border-slate-100" value={docFormData.orgName} onChange={(e) => setDocFormData({...docFormData, orgName: e.target.value})} />
                 <input type="text" placeholder="Role *" className="p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs border border-slate-100" value={docFormData.role} onChange={(e) => setDocFormData({...docFormData, role: e.target.value})} />
               </div>
+              <input type="text" placeholder="Organization Address *" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs border border-slate-100" value={docFormData.orgAddress} onChange={(e) => setDocFormData({...docFormData, orgAddress: e.target.value})} />
               <select className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs border border-slate-100" value={docFormData.mode} onChange={(e) => setDocFormData({...docFormData, mode: e.target.value})}>
                 <option value="">Select Mode *</option>
                 <option value="In-Office">In-Office</option>
@@ -1980,7 +1990,7 @@ const visibleAiWarnings = (aiMeta?.warnings || []).filter((w) => {
                   <input type="text" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs" value={profile.graduationYear} onChange={(e)=>setProfile({...profile, graduationYear: e.target.value})}/>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">Semester Start Date</label>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">Registation Date</label>
                   <input type="date" className="w-full p-4 bg-slate-50 rounded-2xl outline-none font-bold text-xs text-slate-500" value={profile.semesterStartDate} onChange={(e)=>setProfile({...profile, semesterStartDate: e.target.value})}/>
                 </div>
                 <div>
