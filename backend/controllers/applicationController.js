@@ -447,7 +447,7 @@ exports.scheduleInterview = async (req, res) => {
     app.status = 'interview_scheduled';
     app.interviewScheduled = true;
 
-    app.interviewDetails = {
+    app.interview = {
       date,
       time,
       mode,
